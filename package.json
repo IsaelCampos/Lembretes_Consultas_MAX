@@ -50,8 +50,8 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "SEU_USUARIO_GITHUB",
-      "repo": "whatsapp-lembrete-releases"
+      "owner": "IsaelCampos",
+      "repo": "Lembretes_Consultas_MAX"
     },
     "nsis": {
       "oneClick": false,
