@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WhatsApp Lembrete</title>
+<style>
+  :root {
+    --bg:       #0f172a;
+    --surface:  #1e293b;
+    --border:   #334155;
+    --text:     #f1f5f9;
+    --muted:    #94a3b8;
+    --green:    #22c55e;
+    --yellow:   #eab308;
+    --red:      #ef4444;
+    --blue:     #3b82f6;
+    --purple:   #a855f7;
+    --radius:   10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg); color: var(--text);
+    height: 100vh; display: flex; flex-direction: column;
+    overflow: hidden; font-size: 14px;
+  }
+
+  /* Header */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 20px; background: var(--surface);
+    border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .header-left { display: flex; align-items: center; gap: 10px; }
+  .app-title   { font-size: 16px; font-weight: 700; }
+
+  .status-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;
+    background: var(--surface); border: 1px solid var(--border); transition: all .3s;
+  }
+  .status-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .status-badge.connecting .dot { background: var(--yellow); animation: pulse 1s infinite; }
+  .status-badge.qr         .dot { background: var(--blue);   animation: pulse 1s infinite; }
+  .status-badge.ready      .dot { background: var(--green); }
+  .status-badge.error      .dot { background: var(--red); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  /* Layout */
+  main { display: grid; grid-template-columns: 260px 1fr; flex: 1; overflow: hidden; }
+
+  /* Aside */
+  aside {
+    background: var(--surface); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; padding: 16px; gap: 14px; overflow-y: auto;
+  }
+
+  /* QR */
+  .qr-section { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  #qr-container {
+    width: 210px; height: 210px; background: white; border-radius: var(--radius);
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
+  }
+  #qr-container img { width: 100%; height: 100%; }
+  #qr-placeholder {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 8px; color: var(--muted); font-size: 12px; text-align: center; padding: 16px;
+  }
+  #qr-placeholder .icon { font-size: 36px; }
+  .qr-hint { font-size: 11px; color: var(--muted); text-align: center; line-height: 1.5; }
+
+  /* Buttons */
+  .btn {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 9px 14px; border: none; border-radius: var(--radius);
+    font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: opacity .2s, transform .1s; width: 100%;
+  }
+  .btn:active  { transform: scale(.97); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-green  { background: var(--green);  color: #000; }
+  .btn-blue   { background: var(--blue);   color: #fff; }
+  .btn-yellow { background: var(--yellow); color: #000; }
+  .btn-red    { background: var(--red);    color: #fff; }
+  .btn-ghost  { background: var(--border); color: var(--text); }
+
+  /* Stats */
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat-card {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 10px; text-align: center;
+  }
+  .stat-card .stat-value { font-size: 22px; font-weight: 700; }
+  .stat-card .stat-label { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+  .section-title {
+    font-size: 11px; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .06em;
+  }
+
+  /* Right panel */
+  section { display: flex; flex-direction: column; overflow: hidden; }
+  .tabs {
+    display: flex; border-bottom: 1px solid var(--border);
+    flex-shrink: 0; background: var(--surface);
+  }
+  .tab {
+    padding: 12px 18px; font-size: 13px; font-weight: 600; color: var(--muted);
+    cursor: pointer; border-bottom: 2px solid transparent; transition: all .2s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--green); border-bottom-color: var(--green); }
+
+  .tab-content { display: none; flex: 1; overflow: hidden; flex-direction: column; }
+  .tab-content.active { display: flex; }
+
+  /* Log */
+  #log-output {
+    flex: 1; overflow-y: auto; padding: 12px 16px;
+    font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; line-height: 1.6;
+  }
+  .log-line   { display: flex; gap: 10px; align-items: baseline; }
+  .log-time   { color: var(--muted); flex-shrink: 0; font-size: 11px; }
+  .log-msg    { word-break: break-word; }
+  .log-info    .log-msg { color: var(--text); }
+  .log-warn    .log-msg { color: var(--yellow); }
+  .log-error   .log-msg { color: var(--red); }
+
+  /* Msgs */
+  #msgs-list {
+    flex: 1; overflow-y: auto; padding: 12px 16px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .msg-card {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 10px 14px;
+  }
+  .msg-icon { font-size: 20px; flex-shrink: 0; }
+  .msg-body { flex: 1; }
+  .msg-nome { font-weight: 600; }
+  .msg-tipo { font-size: 11px; color: var(--muted); }
+  .msg-time { font-size: 11px; color: var(--muted); flex-shrink: 0; }
+
+  /* ── Configurações ── */
+  #tab-config {
+    overflow-y: auto;
+    padding: 24px 28px;
+    gap: 0;
+  }
+  .config-section {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
+  }
+  .config-section h3 {
+    font-size: 13px; font-weight: 700; margin-bottom: 16px;
+    color: var(--text); display: flex; align-items: center; gap: 8px;
+  }
+  .config-row { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+  .config-row:last-child { margin-bottom: 0; }
+  .config-row label { font-size: 12px; color: var(--muted); font-weight: 600; }
+  .config-row input {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); padding: 8px 10px; font-size: 13px; width: 100%;
+    outline: none; transition: border-color .2s;
+  }
+  .config-row input:focus { border-color: var(--blue); }
+  .config-row input::placeholder { color: var(--muted); }
+
+  .file-row { display: flex; gap: 8px; align-items: center; }
+  .file-row input { flex: 1; }
+  .btn-pick {
+    background: var(--border); color: var(--text); border: none;
+    border-radius: 6px; padding: 8px 12px; font-size: 12px; font-weight: 600;
+    cursor: pointer; white-space: nowrap; flex-shrink: 0;
+  }
+  .btn-pick:hover { background: #475569; }
+
+  .config-hint { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+
+  .config-status {
+    display: none; align-items: center; gap: 8px;
+    padding: 10px 14px; border-radius: 8px; font-size: 13px; font-weight: 600;
+    margin-bottom: 16px;
+  }
+  .config-status.ok    { display: flex; background: #14532d; color: #86efac; }
+  .config-status.error { display: flex; background: #450a0a; color: #fca5a5; }
+
+  .btn-save-config {
+    background: var(--blue); color: white; border: none; border-radius: var(--radius);
+    padding: 10px 24px; font-size: 14px; font-weight: 700; cursor: pointer;
+    transition: opacity .2s;
+  }
+  .btn-save-config:hover   { opacity: .85; }
+  .btn-save-config:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* Update banner */
+  #update-banner {
+    display: none; align-items: center; justify-content: space-between;
+    padding: 8px 16px; background: var(--blue); font-size: 12px; font-weight: 600; flex-shrink: 0;
+  }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <span style="font-size:22px">💬</span>
+    <div>
+      <div class="app-title">WhatsApp Lembrete</div>
+    </div>
+  </div>
+  <div id="wa-badge" class="status-badge">
+    <div class="dot"></div>
+    <span id="wa-status-text">Desconectado</span>
+  </div>
+</header>
+
+<div id="update-banner">
+  <span id="update-msg">🔄 Verificando atualização...</span>
+</div>
+
+<main>
+
+  <!-- Aside -->
+  <aside>
+    <div class="qr-section">
+      <div id="qr-container">
+        <div id="qr-placeholder">
+          <div class="icon">📱</div>
+          <div>Clique em<br><strong>Conectar WhatsApp</strong></div>
+        </div>
+      </div>
+      <p class="qr-hint" id="qr-hint">Configure e conecte para começar</p>
+    </div>
+
+    <button class="btn btn-green" id="btn-connect">
+      📱 Conectar WhatsApp
+    </button>
+
+    <div class="section-title">Modo de Produção</div>
+
+    <button class="btn btn-green" id="btn-toggle-prod" disabled>
+      🟢 Ligar Produção
+    </button>
+
+    <div class="section-title">Execução Manual</div>
+
+    <button class="btn btn-blue"   id="btn-run-now"  disabled>▶️ Executar agora</button>
+    <button class="btn btn-yellow" id="btn-run-test" disabled>🧪 Modo Teste</button>
+    <button class="btn btn-ghost"  id="btn-logs">📂 Abrir logs</button>
+
+    <div class="section-title">Estatísticas de hoje</div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="stat-sent">0</div>
+        <div class="stat-label">Enviadas</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-errors" style="color:var(--red)">0</div>
+        <div class="stat-label">Erros</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-birthday" style="color:var(--purple)">0</div>
+        <div class="stat-label">Aniversários</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-confirm" style="color:var(--green)">0</div>
+        <div class="stat-label">Confirmados</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Right panel -->
+  <section>
+    <div class="tabs">
+      <div class="tab active" data-tab="logs">📋 Log</div>
+      <div class="tab" data-tab="msgs">✉️ Enviadas</div>
+      <div class="tab" data-tab="config">⚙️ Configurações</div>
+    </div>
+
+    <!-- Log -->
+    <div class="tab-content active" id="tab-logs">
+      <div id="log-output"></div>
+    </div>
+
+    <!-- Msgs -->
+    <div class="tab-content" id="tab-msgs">
+      <div id="msgs-list">
+        <p style="color:var(--muted);text-align:center;padding:40px;font-size:13px">
+          As mensagens enviadas aparecerão aqui.
+        </p>
+      </div>
+    </div>
+
+    <!-- Config -->
+    <div class="tab-content" id="tab-config">
+
+      <div id="config-status" class="config-status"></div>
+
+      <!-- Google Sheets -->
+      <div class="config-section">
+        <h3>📊 Google Sheets</h3>
+
+        <div class="config-row">
+          <label>ID da Planilha</label>
+          <input id="cfg-sheet-id" type="text"
+            placeholder="Ex: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms">
+          <div class="config-hint">
+            Encontre na URL da planilha:<br>
+            docs.google.com/spreadsheets/d/<strong>[ID AQUI]</strong>/edit
+          </div>
+        </div>
+
+        <div class="config-row">
+          <label>Arquivo de Credenciais (credentials.json)</label>
+          <div class="file-row">
+            <input id="cfg-creds-path" type="text" placeholder="Clique em Selecionar →" readonly>
+            <button class="btn-pick" id="btn-pick-creds">📂 Selecionar</button>
+          </div>
+          <div class="config-hint">
+            Arquivo JSON da Service Account do Google Cloud.<br>
+            Compartilhe a planilha com o e-mail da service account.
+          </div>
+        </div>
+      </div>
+
+      <!-- Abas -->
+      <div class="config-section">
+        <h3>📑 Nome das Abas</h3>
+
+        <div class="config-row">
+          <label>Aba de Agendamentos Manuais</label>
+          <input id="cfg-tab-appt" type="text" placeholder="Agendamentos_Manual">
+        </div>
+        <div class="config-row">
+          <label>Aba de Agendamentos do Site</label>
+          <input id="cfg-tab-site" type="text" placeholder="Agendamentos_Site">
+        </div>
+        <div class="config-row">
+          <label>Aba de Aniversários</label>
+          <input id="cfg-tab-bday" type="text" placeholder="Aniversário">
+        </div>
+        <div class="config-row">
+          <label>Aba de Testes</label>
+          <input id="cfg-tab-test" type="text" placeholder="Teste">
+        </div>
+        <div class="config-row">
+          <label>Aba de Remarcação</label>
+          <input id="cfg-tab-reschedule" type="text" placeholder="Remarcar">
+          <div class="config-hint">Clientes que responderem NÃO serão adicionados aqui automaticamente.</div>
+        </div>
+      </div>
+
+      <!-- Outros -->
+      <div class="config-section">
+        <h3>⚙️ Outros</h3>
+
+        <div class="config-row">
+          <label>Status de confirmação do site (coluna J)</label>
+          <input id="cfg-site-status" type="text" placeholder="confirmado">
+          <div class="config-hint">Valor exato da coluna Status quando pagamento é confirmado.</div>
+        </div>
+        <div class="config-row">
+          <label>Horário de envio dos parabéns (HH:MM)</label>
+          <input id="cfg-bday-time" type="text" placeholder="09:00">
+        </div>
+        <div class="config-row">
+          <label>Contato para remarcação (exibido quando cliente diz NÃO)</label>
+          <input id="cfg-contact" type="text" placeholder="Ex: (89) 99999-9999 ou link do site">
+        </div>
+      </div>
+
+      <button class="btn-save-config" id="btn-save-config">💾 Salvar Configurações</button>
+
+    </div><!-- /tab-config -->
+
+  </section>
+</main>
+
+<script src="renderer.js"></script>
+</body>
+</html>
