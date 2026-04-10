@@ -1,5 +1,4 @@
 // src/scheduler.js
-// Controle do agendador — o usuario decide quando ligar/desligar
 
 const cron = require('node-cron');
 const { runHourBeforeReminders, runSiteConfirmations, runBirthdayMessages } = require('./reminder');
@@ -8,6 +7,10 @@ const { emitLog } = require('./whatsapp');
 let jobs      = [];
 let isRunning = false;
 
+// Guarda para evitar execucoes sobrepostas do mesmo job
+let runningManual = false;
+let runningSite   = false;
+
 function startScheduler() {
   if (isRunning) {
     emitLog('warn', 'Agendador ja esta em execucao.');
@@ -15,24 +18,31 @@ function startScheduler() {
   }
 
   const { loadConfig } = require('./config');
-  const cfg      = loadConfig();
-  const timezone = cfg.timezone            || 'America/Fortaleza';
-  const tabManual = cfg.appointmentsTab    || 'Agendamentos_Manual';
-  const tabSite   = cfg.siteAppointmentsTab || 'Agendamentos_Site';
+  const cfg       = loadConfig();
+  const timezone  = cfg.timezone             || 'America/Fortaleza';
+  const tabManual = cfg.appointmentsTab      || 'Agendamentos_Manual';
+  const tabSite   = cfg.siteAppointmentsTab  || 'Agendamentos_Site';
 
-  const [bHour, bMin] = (cfg.birthdayTime || '08:00').split(':').map(Number);
-  const birthdayCron  = `${bMin} ${bHour} * * *`;
+  const [bHour, bMin] = (cfg.birthdayTime || '09:00').split(':').map(Number);
+  const birthdayCron  = `${bMin} ${bHour} * * *`; // cron: minuto hora * * *
 
-  // Job 1: a cada minuto — lembrete 1h antes (manual)
-  const job1 = cron.schedule('* * * * *', async () => {
+  // BUG 1 CORRIGIDO: Jobs 1 e 2 nao mais rodam no mesmo segundo.
+  // Job 1 roda nos minutos pares, Job 2 nos minutos impares —
+  // elimina race condition e dobro de chamadas a API.
+  const job1 = cron.schedule('0/2 * * * *', async () => {
+    if (runningManual) return; // guarda contra sobreposicao
+    runningManual = true;
     emitLog('info', `[${now()}] Verificando agendamentos manuais...`);
-    await runHourBeforeReminders(tabManual);
+    try { await runHourBeforeReminders(tabManual); }
+    finally { runningManual = false; }
   }, { timezone });
 
-  // Job 2: a cada minuto — lembrete 1h antes (site)
-  const job2 = cron.schedule('* * * * *', async () => {
+  const job2 = cron.schedule('1/2 * * * *', async () => {
+    if (runningSite) return;
+    runningSite = true;
     emitLog('info', `[${now()}] Verificando agendamentos do site...`);
-    await runHourBeforeReminders(tabSite);
+    try { await runHourBeforeReminders(tabSite); }
+    finally { runningSite = false; }
   }, { timezone });
 
   // Job 3: a cada 5 min — confirmacoes de status do site
@@ -51,8 +61,8 @@ function startScheduler() {
   isRunning = true;
 
   emitLog('info', 'Modo PRODUCAO ligado.');
-  emitLog('info', `  Agendamentos Manual : "${tabManual}" — verificacao a cada minuto`);
-  emitLog('info', `  Agendamentos Site   : "${tabSite}" — verificacao a cada minuto`);
+  emitLog('info', `  Agendamentos Manual : "${tabManual}" — minutos pares`);
+  emitLog('info', `  Agendamentos Site   : "${tabSite}" — minutos impares`);
   emitLog('info', `  Confirmacoes Site   : a cada 5 minutos`);
   emitLog('info', `  Aniversarios        : ${cfg.birthdayTime || '09:00'} | Fuso: ${timezone}`);
 
@@ -73,22 +83,23 @@ function stopScheduler() {
 
 function getIsRunning() { return isRunning; }
 
-// Execucao manual unica — sem tocar no agendador
+// BUG 2 CORRIGIDO: runOnce agora executa AMBAS as abas (manual + site),
+// nao apenas a aba manual que era passada pelo botao.
 async function runOnce(tabName) {
   const { loadConfig } = require('./config');
   const cfg      = loadConfig();
   const testTab  = cfg.testTab || 'Teste';
   const isTeste  = tabName === testTab;
 
-  emitLog('info', isTeste
-    ? `TESTE — lendo aba "${tabName}"...`
-    : `Executando agora — aba "${tabName}"...`
-  );
-
-  await runHourBeforeReminders(tabName);
-
-  // No modo producao manual roda tambem confirmacoes do site e aniversarios
-  if (!isTeste) {
+  if (isTeste) {
+    emitLog('info', `TESTE — lendo aba "${tabName}"...`);
+    await runHourBeforeReminders(tabName);
+  } else {
+    emitLog('info', 'Executando agora — todas as abas...');
+    const tabManual = cfg.appointmentsTab     || 'Agendamentos_Manual';
+    const tabSite   = cfg.siteAppointmentsTab || 'Agendamentos_Site';
+    await runHourBeforeReminders(tabManual);
+    await runHourBeforeReminders(tabSite);
     await runSiteConfirmations();
     await runBirthdayMessages();
   }

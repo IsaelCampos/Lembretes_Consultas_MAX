@@ -33,7 +33,7 @@ $('btn-toggle-prod').addEventListener('click', async () => {
       prodRunning = true;
       btn.className = 'btn btn-red';
       btn.textContent = '🔴 Desligar Produção';
-      addLog('info', '🟢 Modo PRODUÇÃO ligado.');
+      addLog('info', 'Modo PRODUCAO ligado.');
     }
   } else {
     const ok = await window.api.stopScheduler();
@@ -41,7 +41,7 @@ $('btn-toggle-prod').addEventListener('click', async () => {
       prodRunning = false;
       btn.className = 'btn btn-green';
       btn.textContent = '🟢 Ligar Produção';
-      addLog('info', '🔴 Modo PRODUÇÃO desligado.');
+      addLog('info', 'Modo PRODUCAO desligado.');
     }
   }
 
@@ -53,7 +53,7 @@ $('btn-run-now').addEventListener('click', async () => {
   const cfg = await window.api.getConfig();
   const tab = cfg.appointmentsTab || 'Agendamentos';
   $('btn-run-now').disabled = true;
-  addLog('info', `▶️ Executando agora — aba "${tab}"...`);
+  addLog('info', `Executando agora — aba "${tab}"...`);
   await window.api.runNow(tab);
   $('btn-run-now').disabled = false;
 });
@@ -63,7 +63,7 @@ $('btn-run-test').addEventListener('click', async () => {
   const cfg = await window.api.getConfig();
   const tab = cfg.testTab || 'Teste';
   $('btn-run-test').disabled = true;
-  addLog('info', `🧪 Modo TESTE — lendo aba "${tab}"...`);
+  addLog('info', `TESTE — lendo aba "${tab}"...`);
   await window.api.runNow(tab);
   $('btn-run-test').disabled = false;
 });
@@ -137,7 +137,7 @@ $('btn-save-config').addEventListener('click', async () => {
 
   status.className = 'config-status ok';
   status.textContent = '✅ Configurações salvas com sucesso!';
-  addLog('info', '✅ Configurações atualizadas.');
+  addLog('info', 'Configuracoes atualizadas.');
 
   btn.disabled = false;
   btn.textContent = '💾 Salvar Configurações';
@@ -270,16 +270,16 @@ window.api.onUpdateStatus(({ type, version, percent }) => {
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 (async () => {
-  addLog('info', '🚀 Aplicação iniciada.');
+  addLog('info', 'Aplicacao iniciada.');
 
   // Verifica se já está configurado
   const cfg = await window.api.getConfig();
   if (!cfg.googleSheetId || !cfg.credentialsPath) {
-    addLog('warn', '⚙️ Configure a planilha na aba Configurações antes de conectar.');
+    addLog('warn', 'Configure a planilha na aba Configuracoes antes de conectar.');
     // Abre direto na aba de config
     document.querySelector('[data-tab="config"]').click();
   } else {
-    addLog('info', `📊 Planilha: ${cfg.googleSheetId.slice(0, 20)}...`);
-    addLog('info', '✅ Configuração OK. Conecte o WhatsApp para começar.');
+    addLog('info', `Planilha: ${cfg.googleSheetId.slice(0, 20)}...`);
+    addLog('info', 'Configuracao OK. Conecte o WhatsApp para comecar.');
   }
 })();

@@ -1,6 +1,5 @@
 // src/state.js
-// Persiste em disco quais mensagens já foram enviadas
-// Garante que após reiniciar o app não reenvia mensagens antigas
+// Persiste em disco quais mensagens ja foram enviadas
 
 const fs   = require('fs');
 const path = require('path');
@@ -28,23 +27,35 @@ function saveState(state) {
 }
 
 function pruneOldEntries(state) {
-  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  for (const section of ['birthdays', 'hourBefore', 'siteConfirmed']) {
-    for (const key of Object.keys(state[section] || {})) {
-      if ((state[section][key].sentAt || 0) < cutoff) {
-        delete state[section][key];
-      }
-    }
+  const cutoff7d = Date.now() - 7  * 24 * 60 * 60 * 1000;
+  const cutoff1y = Date.now() - 366 * 24 * 60 * 60 * 1000;
+
+  for (const key of Object.keys(state.hourBefore || {})) {
+    if ((state.hourBefore[key].sentAt || 0) < cutoff7d)
+      delete state.hourBefore[key];
   }
+  for (const key of Object.keys(state.birthdays || {})) {
+    if ((state.birthdays[key].sentAt || 0) < cutoff1y)
+      delete state.birthdays[key];
+  }
+  // BUG 4 CORRIGIDO: siteConfirmed agora expira apos 90 dias.
+  // Chave composta rowIndex__telefone evita bloquear nova linha
+  // que reutilize o mesmo rowIndex apos delecao de registro antigo.
+  const cutoff90d = Date.now() - 90 * 24 * 60 * 60 * 1000;
+  for (const key of Object.keys(state.siteConfirmed || {})) {
+    if ((state.siteConfirmed[key].sentAt || 0) < cutoff90d)
+      delete state.siteConfirmed[key];
+  }
+
   return state;
 }
 
 // ─── Lembrete 1h antes ───────────────────────────────────────────────────────
+// Chave: rowIndex + data — sobrevive a reinicializacoes
 
 function wasHourBeforeSent(rowIndex, data) {
   const state = loadState();
-  const key   = `${rowIndex}__${data}`;
-  return !!(state.hourBefore && state.hourBefore[key]);
+  return !!(state.hourBefore && state.hourBefore[`${rowIndex}__${data}`]);
 }
 
 function markHourBeforeSent(rowIndex, data, nome) {
@@ -54,33 +65,43 @@ function markHourBeforeSent(rowIndex, data, nome) {
   saveState(state);
 }
 
-// ─── Aniversário ─────────────────────────────────────────────────────────────
+// ─── Aniversario ─────────────────────────────────────────────────────────────
+// Chave: telefone + ano — reenvia a cada aniversario
 
 function wasBirthdaySentThisYear(telefone) {
   const state = loadState();
-  const key   = `${telefone}__${new Date().getFullYear()}`;
+  const key   = `${normalizePhone(telefone)}__${new Date().getFullYear()}`;
   return !!(state.birthdays && state.birthdays[key]);
 }
 
 function markBirthdaySent(telefone, nome) {
   const state = pruneOldEntries(loadState());
   if (!state.birthdays) state.birthdays = {};
-  state.birthdays[`${telefone}__${new Date().getFullYear()}`] = { nome, sentAt: Date.now() };
+  const key = `${normalizePhone(telefone)}__${new Date().getFullYear()}`;
+  state.birthdays[key] = { nome, sentAt: Date.now() };
   saveState(state);
 }
 
-// ─── Confirmação do site (status → "confirmado") ──────────────────────────────
-// Chave: rowIndex — assim só envia uma vez por agendamento, mesmo após reinício
-
-function wasSiteConfirmationSent(rowIndex) {
-  const state = loadState();
-  return !!(state.siteConfirmed && state.siteConfirmed[String(rowIndex)]);
+function normalizePhone(raw) {
+  return String(raw || '').replace(/\D/g, '');
 }
 
-function markSiteConfirmationSent(rowIndex, nome) {
+// ─── Confirmacao do site ──────────────────────────────────────────────────────
+// BUG 4 CORRIGIDO: chave agora e rowIndex + telefone.
+// Se uma linha for deletada e outra ocupar o mesmo rowIndex,
+// o telefone diferente garante que a nova linha sera notificada.
+
+function wasSiteConfirmationSent(rowIndex, telefone) {
+  const state = loadState();
+  const key   = `${rowIndex}__${normalizePhone(telefone)}`;
+  return !!(state.siteConfirmed && state.siteConfirmed[key]);
+}
+
+function markSiteConfirmationSent(rowIndex, telefone, nome) {
   const state = pruneOldEntries(loadState());
   if (!state.siteConfirmed) state.siteConfirmed = {};
-  state.siteConfirmed[String(rowIndex)] = { nome, sentAt: Date.now() };
+  const key = `${rowIndex}__${normalizePhone(telefone)}`;
+  state.siteConfirmed[key] = { nome, sentAt: Date.now() };
   saveState(state);
 }
 

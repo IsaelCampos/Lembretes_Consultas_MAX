@@ -1,17 +1,10 @@
 // src/reminder.js
-// Logica de todos os lembretes:
-//  1. Lembrete 1h antes (manual e site) com fluxo SIM/NAO
-//  2. Confirmacao de agendamento do site (status = "confirmado")
-//  3. Mensagem de aniversario
+// Logica de todos os lembretes
 
 const { parse, isValid, isEqual, startOfDay, differenceInMinutes, format } = require('date-fns');
 const { ptBR } = require('date-fns/locale');
 const {
-  sendMessage,
-  checkNumberExists,
-  registerPendingConfirmation,
-  emitLog,
-  getIsReady,
+  sendMessage, checkNumberExists, registerPendingConfirmation, emitLog, getIsReady,
 } = require('./whatsapp');
 const { getAppointments, getSiteAppointments, getBirthdayClients } = require('./sheets');
 const {
@@ -20,11 +13,17 @@ const {
   wasSiteConfirmationSent, markSiteConfirmationSent,
 } = require('./state');
 
-// ─── Utilitários de data ─────────────────────────────────────────────────────
+// loadConfig no topo do arquivo — sem hoisting trick
+const loadConfig = () => require('./config').loadConfig();
+
+// ─── Utilitarios de data ──────────────────────────────────────────────────────
 
 function parseDate(str) {
   if (!str) return null;
   const s = String(str).trim();
+  // BUG 5 CORRIGIDO: ordem unica e consistente — dd/MM primeiro para dados
+  // brasileiros. Para datas no formato americano (planilha de aniversario),
+  // usamos funcao separada isBirthdayToday com ordem correta.
   const fmts = [
     'dd/MM/yy', 'dd/MM/yyyy', 'yyyy-MM-dd',
     'MM/dd/yyyy', 'dd-MM-yyyy',
@@ -54,11 +53,15 @@ function buildDateTime(dataStr, horaStr) {
   return dt;
 }
 
+// BUG 5 CORRIGIDO: isBirthdayToday usa MM/dd/yyyy PRIMEIRO porque a aba
+// Aniversario exporta no formato americano (ex: "11/14/2006").
+// Separado de parseDate() que lida com datas de agendamentos (formato BR).
 function isBirthdayToday(dateStr) {
   if (!dateStr) return false;
   const s   = String(dateStr).trim();
   const now = new Date();
-  const fmts = ['MM/dd/yyyy', 'dd/MM/yyyy', 'MM/dd/yy', 'dd/MM/yy', 'MM/dd', 'dd/MM'];
+  // Formato americano primeiro (exportacao do Google Sheets)
+  const fmts = ['MM/dd/yyyy', 'MM/dd/yy', 'dd/MM/yyyy', 'dd/MM/yy', 'MM/dd', 'dd/MM'];
   for (const fmt of fmts) {
     const d = parse(s, fmt, new Date());
     if (isValid(d)) {
@@ -83,12 +86,11 @@ async function runHourBeforeReminders(tabName) {
     return;
   }
 
-  emitLog('info', `Verificando consultas em ~1h na aba "${tabName}"...`);
+  const cfg       = loadConfig();
+  const siteTab   = cfg.siteAppointmentsTab || 'Agendamentos_Site';
+  const isSiteTab = tabName === siteTab;
 
-  // Busca da aba correta: site ou manual
-  const cfg           = loadConfig();
-  const siteTab       = cfg.siteAppointmentsTab || 'Agendamentos_Site';
-  const isSiteTab     = tabName === siteTab;
+  emitLog('info', `Verificando consultas em ~1h na aba "${tabName}"...`);
 
   let appointments;
   try {
@@ -100,11 +102,10 @@ async function runHourBeforeReminders(tabName) {
     return;
   }
 
-  const now     = new Date();
+  const now      = new Date();
   const proximas = appointments.filter(a => {
     const dt = buildDateTime(a.data, a.horaInicio);
-    if (!dt) return false;
-    if (!isToday(dt)) return false;
+    if (!dt || !isToday(dt)) return false;
     const diff = differenceInMinutes(dt, now);
     return diff >= 55 && diff <= 75;
   });
@@ -126,22 +127,20 @@ async function runHourBeforeReminders(tabName) {
     }
 
     const msg =
-      `Olá, ${a.nome}!\n\n` +
-      `Sua consulta está marcada para *hoje às ${a.horaInicio}*.\n\n` +
-      `Você está ciente e vai comparecer? Lembramos que *faltas não justificadas estão sujeitas a cobrança*.\n\n` +
+      `Ola, ${a.nome}!\n\n` +
+      `Sua consulta esta marcada para *hoje as ${a.horaInicio}*.\n\n` +
+      `Voce esta ciente e vai comparecer? Lembramos que *faltas nao justificadas estao sujeitas a cobranca*.\n\n` +
       `Responda:\n` +
       `*SIM* — estou confirmado\n` +
-      `*NÃO* — preciso remarcar`;
+      `*NAO* — preciso remarcar`;
 
     const waId = await sendMessage(a.telefone, msg);
 
     if (waId) {
       markHourBeforeSent(a.rowIndex, a.data, a.nome);
       registerPendingConfirmation(waId, {
-        nome:         a.nome,
-        telefone:     a.telefone,
-        data:         a.data,
-        horaCompleta: a.horaCompleta,
+        nome: a.nome, telefone: a.telefone,
+        data: a.data, horaCompleta: a.horaCompleta,
       });
       global.sendToRenderer?.('msg-sent', {
         nome: a.nome, tipo: '1h_antes', hora: a.horaInicio, data: a.data,
@@ -152,9 +151,7 @@ async function runHourBeforeReminders(tabName) {
   }
 }
 
-// ─── 2. Confirmação de agendamento do site ────────────────────────────────────
-
-function loadConfig() { return require('./config').loadConfig(); }
+// ─── 2. Confirmacao de agendamento do site ────────────────────────────────────
 
 async function runSiteConfirmations() {
   if (!getIsReady()) {
@@ -162,8 +159,8 @@ async function runSiteConfirmations() {
     return;
   }
 
-  const cfg              = loadConfig();
-  const statusEsperado   = (cfg.siteConfirmedStatus || 'confirmado').toLowerCase().trim();
+  const cfg            = loadConfig();
+  const statusEsperado = (cfg.siteConfirmedStatus || 'confirmado').toLowerCase().trim();
 
   emitLog('info', `Verificando confirmacoes na aba "${cfg.siteAppointmentsTab || 'Agendamentos_Site'}"...`);
 
@@ -182,7 +179,8 @@ async function runSiteConfirmations() {
   emitLog('info', `Agendamentos com status "${statusEsperado}": ${confirmados.length}`);
 
   for (const a of confirmados) {
-    if (wasSiteConfirmationSent(a.rowIndex)) {
+    // BUG 4 CORRIGIDO: passa telefone como segundo argumento para chave composta
+    if (wasSiteConfirmationSent(a.rowIndex, a.telefone)) {
       emitLog('info', `IGNORADO — confirmacao ja enviada para ${a.nome} (linha ${a.rowIndex}).`);
       continue;
     }
@@ -195,32 +193,29 @@ async function runSiteConfirmations() {
       continue;
     }
 
-    const dataFmt = fmtData(a.data);
-
     const msg =
       `Prezado(a) ${a.nome},\n\n` +
       `Informamos que o seu agendamento e o comprovante de pagamento foram recebidos e confirmados com sucesso.\n\n` +
       `Segue o resumo da sua consulta:\n` +
-      `Data: ${dataFmt}\n` +
-      `Horário: ${a.horaInicio}\n\n` +
-      `Caso tenha alguma dúvida ou necessite de informações adicionais, não hesite em nos contatar.\n\n` +
+      `Data: ${fmtData(a.data)}\n` +
+      `Horario: ${a.horaInicio}\n\n` +
+      `Caso tenha alguma duvida ou necessite de informacoes adicionais, nao hesite em nos contatar.\n\n` +
       `Atenciosamente,\n` +
       `Equipe de Atendimento`;
 
     const waId = await sendMessage(a.telefone, msg);
 
     if (waId) {
-      markSiteConfirmationSent(a.rowIndex, a.nome);
-      global.sendToRenderer?.('msg-sent', {
-        nome: a.nome, tipo: 'confirmacao_site', data: a.data,
-      });
+      // BUG 4 CORRIGIDO: passa telefone para chave composta
+      markSiteConfirmationSent(a.rowIndex, a.telefone, a.nome);
+      global.sendToRenderer?.('msg-sent', { nome: a.nome, tipo: 'confirmacao_site', data: a.data });
     }
 
     await sleep(1500);
   }
 }
 
-// ─── 3. Aniversários ─────────────────────────────────────────────────────────
+// ─── 3. Aniversarios ─────────────────────────────────────────────────────────
 
 async function runBirthdayMessages() {
   if (!getIsReady()) {
@@ -256,8 +251,8 @@ async function runBirthdayMessages() {
     }
 
     const msg =
-      `Feliz Aniversário, ${c.nome}! 🎂\n\n` +
-      `Deseja a você um dia muito especial, repleto de alegrias e conquistas!\n\n` +
+      `Feliz Aniversario, ${c.nome}! 🎂\n\n` +
+      `Desejamos a voce um dia muito especial, repleto de alegrias e conquistas!\n\n` +
       `Com carinho, Maxwell`;
 
     const waId = await sendMessage(c.telefone, msg);
