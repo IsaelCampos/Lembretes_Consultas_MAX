@@ -195,10 +195,16 @@ async function runSiteConfirmations() {
 
     const msg =
       `Prezado(a) ${a.nome},\n\n` +
-      `Informamos que o seu agendamento e o comprovante de pagamento foram recebidos e confirmados com sucesso.\n\n` +
-      `Segue o resumo da sua consulta:\n` +
-      `Data: ${fmtData(a.data)}\n` +
-      `Horario: ${a.horaInicio}\n\n` +
+      `Está quase na hora da sua consulta! Vamos garantir que tudo esteja pronto.\n` +
+      `Aqui estão os detalhes:\n\n` +
+      `Consulta com: Maxwell Soares\n` +
+      `📅 Data:  ${fmtData(a.data)}\n` +
+      `⏰ Horário: ${a.horaInicio}\n\n` +
+      `Aqui estão algumas dicas para uma experiência incrível:\n\n` +
+      `- Encontre um cantinho tranquilo e com boa iluminação.\n` +
+      `- Teste sua conexão de internet, câmera e microfone antes da consulta.\n` +
+      `- Use fones de ouvido para maior privacidade e melhor qualidade de áudio.\n` +
+      `- E o mais importante: relaxe! Estamos aqui para cuidar de você.\n\n` +
       `Caso tenha alguma duvida ou necessite de informacoes adicionais, nao hesite em nos contatar.\n\n` +
       `Atenciosamente,\n` +
       `Equipe de Atendimento`;

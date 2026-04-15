@@ -26,18 +26,18 @@ function startScheduler() {
   const [bHour, bMin] = (cfg.birthdayTime || '09:00').split(':').map(Number);
   const birthdayCron  = `${bMin} ${bHour} * * *`; // cron: minuto hora * * *
 
-  // BUG 1 CORRIGIDO: Jobs 1 e 2 nao mais rodam no mesmo segundo.
-  // Job 1 roda nos minutos pares, Job 2 nos minutos impares —
-  // elimina race condition e dobro de chamadas a API.
-  const job1 = cron.schedule('0/2 * * * *', async () => {
-    if (runningManual) return; // guarda contra sobreposicao
+  // Jobs 1 e 2 rodam a cada minuto com guards de sobreposição —
+  // os guards já garantem que uma execução não começa antes da anterior terminar,
+  // resolvendo o problema de concorrência sem precisar de cron diferente.
+  const job1 = cron.schedule('* * * * *', async () => {
+    if (runningManual) return;
     runningManual = true;
     emitLog('info', `[${now()}] Verificando agendamentos manuais...`);
     try { await runHourBeforeReminders(tabManual); }
     finally { runningManual = false; }
   }, { timezone });
 
-  const job2 = cron.schedule('1/2 * * * *', async () => {
+  const job2 = cron.schedule('* * * * *', async () => {
     if (runningSite) return;
     runningSite = true;
     emitLog('info', `[${now()}] Verificando agendamentos do site...`);
@@ -61,8 +61,8 @@ function startScheduler() {
   isRunning = true;
 
   emitLog('info', 'Modo PRODUCAO ligado.');
-  emitLog('info', `  Agendamentos Manual : "${tabManual}" — minutos pares`);
-  emitLog('info', `  Agendamentos Site   : "${tabSite}" — minutos impares`);
+  emitLog('info', `  Agendamentos Manual : "${tabManual}" — verificacao a cada minuto`);
+  emitLog('info', `  Agendamentos Site   : "${tabSite}" — verificacao a cada minuto`);
   emitLog('info', `  Confirmacoes Site   : a cada 5 minutos`);
   emitLog('info', `  Aniversarios        : ${cfg.birthdayTime || '09:00'} | Fuso: ${timezone}`);
 
