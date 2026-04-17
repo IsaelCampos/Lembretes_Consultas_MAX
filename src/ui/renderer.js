@@ -2,6 +2,7 @@
 const $ = id => document.getElementById(id);
 
 let statSent = 0, statErrors = 0, statBirthday = 0, statConfirm = 0;
+let prodRunning = false;
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 document.querySelectorAll('.tab').forEach(tab => {
@@ -13,15 +14,12 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
-// ─── Botões principais ────────────────────────────────────────────────────────
+// ─── Botoes principais ────────────────────────────────────────────────────────
 $('btn-connect').addEventListener('click', async () => {
-  $('btn-connect').disabled = true;
+  $('btn-connect').disabled    = true;
   $('btn-connect').textContent = '⏳ Conectando...';
   await window.api.startWhatsApp();
 });
-
-// Toggle produção — Liga / Desliga
-let prodRunning = false;
 
 $('btn-toggle-prod').addEventListener('click', async () => {
   const btn = $('btn-toggle-prod');
@@ -30,35 +28,31 @@ $('btn-toggle-prod').addEventListener('click', async () => {
   if (!prodRunning) {
     const ok = await window.api.startScheduler();
     if (ok) {
-      prodRunning = true;
-      btn.className = 'btn btn-red';
-      btn.textContent = '🔴 Desligar Produção';
+      prodRunning          = true;
+      btn.className        = 'btn btn-red';
+      btn.textContent      = '🔴 Desligar Produção';
       addLog('info', 'Modo PRODUCAO ligado.');
     }
   } else {
     const ok = await window.api.stopScheduler();
     if (ok) {
-      prodRunning = false;
-      btn.className = 'btn btn-green';
-      btn.textContent = '🟢 Ligar Produção';
+      prodRunning          = false;
+      btn.className        = 'btn btn-green';
+      btn.textContent      = '🟢 Ligar Produção';
       addLog('info', 'Modo PRODUCAO desligado.');
+      $('last-check').textContent = '—';
     }
   }
-
   btn.disabled = false;
 });
 
-// Executar agora — roda produção UMA vez (aba Agendamentos + aniversários)
 $('btn-run-now').addEventListener('click', async () => {
-  const cfg = await window.api.getConfig();
-  const tab = cfg.appointmentsTab || 'Agendamentos';
   $('btn-run-now').disabled = true;
-  addLog('info', `Executando agora — aba "${tab}"...`);
-  await window.api.runNow(tab);
+  addLog('info', 'Executando agora — todas as abas...');
+  await window.api.runNow('__all__');
   $('btn-run-now').disabled = false;
 });
 
-// Modo Teste — roda APENAS a aba Teste, sem aniversários, sem produção
 $('btn-run-test').addEventListener('click', async () => {
   const cfg = await window.api.getConfig();
   const tab = cfg.testTab || 'Teste';
@@ -70,82 +64,83 @@ $('btn-run-test').addEventListener('click', async () => {
 
 $('btn-logs').addEventListener('click', () => window.api.openLogs());
 
-// ─── Configurações ────────────────────────────────────────────────────────────
-
-// Carrega config salva ao abrir a aba
+// ─── Configuracoes ────────────────────────────────────────────────────────────
 document.querySelector('[data-tab="config"]').addEventListener('click', loadConfigIntoForm);
 
 async function loadConfigIntoForm() {
   const cfg = await window.api.getConfig();
-  $('cfg-sheet-id').value       = cfg.googleSheetId       || '';
-  $('cfg-creds-path').value      = cfg.credentialsPath     || '';
-  $('cfg-tab-appt').value        = cfg.appointmentsTab     || 'Agendamentos_Manual';
-  $('cfg-tab-site').value        = cfg.siteAppointmentsTab || 'Agendamentos_Site';
-  $('cfg-tab-bday').value        = cfg.birthdayTab         || 'Aniversário';
-  $('cfg-tab-test').value        = cfg.testTab             || 'Teste';
-  $('cfg-tab-reschedule').value  = cfg.rescheduleTab       || 'Remarcar';
-  $('cfg-site-status').value     = cfg.siteConfirmedStatus || 'confirmado';
-  $('cfg-bday-time').value       = cfg.birthdayTime        || '09:00';
-  $('cfg-contact').value         = cfg.contactInfo         || '';
+  $('cfg-sheet-id').value          = cfg.googleSheetId          || '';
+  $('cfg-creds-path').value        = cfg.credentialsPath        || '';
+  $('cfg-tab-appt').value          = cfg.appointmentsTab        || 'Agendamentos_Manual';
+  $('cfg-tab-site').value          = cfg.siteAppointmentsTab    || 'Agendamentos_Site';
+  $('cfg-tab-bday').value          = cfg.birthdayTab            || 'Aniversário';
+  $('cfg-tab-test').value          = cfg.testTab                || 'Teste';
+  $('cfg-tab-reschedule').value    = cfg.rescheduleTab          || 'Remarcar';
+  $('cfg-site-status').value       = cfg.siteConfirmedStatus    || 'confirmado';
+  $('cfg-bday-time').value         = cfg.birthdayTime           || '09:00';
+  $('cfg-contact').value           = cfg.contactInfo            || '';
+  $('cfg-reminder-min').value      = cfg.reminderMinutes        ?? 60;
+  $('cfg-reminder-window').value   = cfg.reminderWindowMinutes  ?? 10;
 }
 
-// Botão selecionar arquivo
 $('btn-pick-creds').addEventListener('click', async () => {
   const filePath = await window.api.pickCredentials();
-  if (filePath) {
-    $('cfg-creds-path').value = filePath;
-  }
+  if (filePath) $('cfg-creds-path').value = filePath;
 });
 
-// Salvar configurações
 $('btn-save-config').addEventListener('click', async () => {
   const btn = $('btn-save-config');
-  btn.disabled = true;
+  btn.disabled    = true;
   btn.textContent = '⏳ Salvando...';
 
   const cfg = {
-    googleSheetId:        $('cfg-sheet-id').value.trim(),
-    credentialsPath:      $('cfg-creds-path').value.trim(),
-    appointmentsTab:      $('cfg-tab-appt').value.trim()       || 'Agendamentos_Manual',
-    siteAppointmentsTab:  $('cfg-tab-site').value.trim()       || 'Agendamentos_Site',
-    birthdayTab:          $('cfg-tab-bday').value.trim()       || 'Aniversário',
-    testTab:              $('cfg-tab-test').value.trim()       || 'Teste',
-    rescheduleTab:        $('cfg-tab-reschedule').value.trim() || 'Remarcar',
-    siteConfirmedStatus:  $('cfg-site-status').value.trim()    || 'confirmado',
-    birthdayTime:         $('cfg-bday-time').value.trim()      || '09:00',
-    contactInfo:          $('cfg-contact').value.trim(),
+    googleSheetId:          $('cfg-sheet-id').value.trim(),
+    credentialsPath:        $('cfg-creds-path').value.trim(),
+    appointmentsTab:        $('cfg-tab-appt').value.trim()       || 'Agendamentos_Manual',
+    siteAppointmentsTab:    $('cfg-tab-site').value.trim()       || 'Agendamentos_Site',
+    birthdayTab:            $('cfg-tab-bday').value.trim()       || 'Aniversário',
+    testTab:                $('cfg-tab-test').value.trim()       || 'Teste',
+    rescheduleTab:          $('cfg-tab-reschedule').value.trim() || 'Remarcar',
+    siteConfirmedStatus:    $('cfg-site-status').value.trim()    || 'confirmado',
+    birthdayTime:           $('cfg-bday-time').value.trim()      || '09:00',
+    contactInfo:            $('cfg-contact').value.trim(),
+    reminderMinutes:        Number($('cfg-reminder-min').value)    || 60,
+    reminderWindowMinutes:  Number($('cfg-reminder-window').value) || 10,
   };
 
   const status = $('config-status');
 
+  // Validacao client-side basica
   if (!cfg.googleSheetId) {
-    status.className = 'config-status error';
-    status.textContent = '❌ Informe o ID da planilha.';
-    btn.disabled = false;
-    btn.textContent = '💾 Salvar Configurações';
-    return;
+    showConfigStatus('error', 'Informe o ID da planilha.');
+    btn.disabled = false; btn.textContent = '💾 Salvar Configurações'; return;
   }
   if (!cfg.credentialsPath) {
-    status.className = 'config-status error';
-    status.textContent = '❌ Selecione o arquivo credentials.json.';
-    btn.disabled = false;
-    btn.textContent = '💾 Salvar Configurações';
-    return;
+    showConfigStatus('error', 'Selecione o arquivo credentials.json.');
+    btn.disabled = false; btn.textContent = '💾 Salvar Configurações'; return;
   }
 
-  await window.api.saveConfig(cfg);
+  // BUG-C: validacao final feita no main process
+  const result = await window.api.saveConfig(cfg);
 
-  status.className = 'config-status ok';
-  status.textContent = '✅ Configurações salvas com sucesso!';
-  addLog('info', 'Configuracoes atualizadas.');
+  if (!result.ok) {
+    showConfigStatus('error', result.errors.join(' | '));
+  } else {
+    showConfigStatus('ok', 'Configurações salvas com sucesso!');
+    addLog('info', 'Configuracoes atualizadas.');
+  }
 
-  btn.disabled = false;
-  btn.textContent = '💾 Salvar Configurações';
-
-  setTimeout(() => status.className = 'config-status', 4000);
+  btn.disabled = false; btn.textContent = '💾 Salvar Configurações';
 });
 
-// ─── Status do WhatsApp ───────────────────────────────────────────────────────
+function showConfigStatus(type, msg) {
+  const el = $('config-status');
+  el.className    = `config-status ${type}`;
+  el.textContent  = type === 'ok' ? `✅ ${msg}` : `❌ ${msg}`;
+  setTimeout(() => el.className = 'config-status', 5000);
+}
+
+// ─── Status WhatsApp ──────────────────────────────────────────────────────────
 window.api.onWaStatus(({ status, number }) => {
   const badge = $('wa-badge');
   const text  = $('wa-status-text');
@@ -165,22 +160,21 @@ window.api.onWaStatus(({ status, number }) => {
   text.textContent = label;
 
   if (status === 'ready') {
-    $('btn-connect').textContent     = '✅ Conectado';
-    $('btn-connect').disabled        = true;
-    $('btn-toggle-prod').disabled    = false;
-    $('btn-run-now').disabled        = false;
-    $('btn-run-test').disabled       = false;
-    $('qr-container').innerHTML      = '<div style="font-size:60px;padding:20px">✅</div>';
-    $('qr-hint').textContent         = `Conectado: ${number || ''}`;
+    $('btn-connect').textContent  = '✅ Conectado';
+    $('btn-connect').disabled     = true;
+    $('btn-toggle-prod').disabled = false;
+    $('btn-run-now').disabled     = false;
+    $('btn-run-test').disabled    = false;
+    $('qr-container').innerHTML   = '<div style="font-size:60px;padding:20px">✅</div>';
+    $('qr-hint').textContent      = `Conectado: ${number || ''}`;
   }
 
   if (status === 'disconnected' || status === 'auth_failure') {
-    $('btn-connect').disabled        = false;
-    $('btn-connect').textContent     = '📱 Reconectar';
-    $('btn-toggle-prod').disabled    = true;
-    $('btn-run-now').disabled        = true;
-    $('btn-run-test').disabled       = true;
-    // Se estava em produção, marca como desligado
+    $('btn-connect').disabled     = false;
+    $('btn-connect').textContent  = '📱 Reconectar';
+    $('btn-toggle-prod').disabled = true;
+    $('btn-run-now').disabled     = true;
+    $('btn-run-test').disabled    = true;
     if (prodRunning) {
       prodRunning = false;
       $('btn-toggle-prod').className   = 'btn btn-green';
@@ -192,27 +186,26 @@ window.api.onWaStatus(({ status, number }) => {
 // ─── QR Code ─────────────────────────────────────────────────────────────────
 window.api.onQrCode(({ dataUrl }) => {
   $('qr-container').innerHTML = `<img src="${dataUrl}" alt="QR Code">`;
-  $('qr-hint').textContent = 'WhatsApp → Aparelhos conectados → Conectar';
+  $('qr-hint').textContent    = 'WhatsApp → Aparelhos conectados → Conectar';
 });
 
 // ─── Log ─────────────────────────────────────────────────────────────────────
 function addLog(level, msg) {
   const output = $('log-output');
-  const line = document.createElement('div');
+  const line   = document.createElement('div');
   line.className = `log-line log-${level}`;
 
   const time = document.createElement('span');
-  time.className = 'log-time';
+  time.className   = 'log-time';
   time.textContent = new Date().toLocaleTimeString('pt-BR');
 
   const text = document.createElement('span');
-  text.className = 'log-msg';
-  text.textContent = msg;
+  text.className   = 'log-msg';
+  text.textContent = msg; // textContent — sem risco de XSS
 
   line.append(time, text);
   output.appendChild(line);
   output.scrollTop = output.scrollHeight;
-
   while (output.children.length > 500) output.removeChild(output.firstChild);
 
   if (level === 'error') { statErrors++; $('stat-errors').textContent = statErrors; }
@@ -221,13 +214,20 @@ function addLog(level, msg) {
 window.api.onLog(({ level, msg }) => addLog(level, msg));
 
 // ─── Mensagens enviadas ───────────────────────────────────────────────────────
+// BUG-B CORRIGIDO: sem innerHTML com dados externos — usa criacao segura de DOM
 window.api.onMsgSent(({ nome, tipo, hora, data }) => {
   statSent++;
   $('stat-sent').textContent = statSent;
 
-  const icons  = { '1h_antes':'⏰', 'aniversario':'🎂', 'confirmacao_sim':'✅', 'confirmacao_nao':'↩️', 'confirmacao_site':'✅' };
+  const icons  = {
+    'lembrete':          '⏰',
+    'aniversario':       '🎂',
+    'confirmacao_sim':   '✅',
+    'confirmacao_nao':   '↩️',
+    'confirmacao_site':  '✅',
+  };
   const labels = {
-    '1h_antes':          `Lembrete 1h antes${hora ? ' — ' + hora : ''}`,
+    'lembrete':          `Lembrete${hora ? ' — ' + hora : ''}`,
     'aniversario':       'Parabéns de aniversário',
     'confirmacao_sim':   'Confirmou presença',
     'confirmacao_nao':   'Solicitou remarcação',
@@ -240,43 +240,77 @@ window.api.onMsgSent(({ nome, tipo, hora, data }) => {
   const list = $('msgs-list');
   list.querySelector('p')?.remove();
 
-  const card = document.createElement('div');
+  // BUG-B CORRIGIDO: criacao por DOM API em vez de innerHTML
+  const card    = document.createElement('div');
   card.className = 'msg-card';
-  card.innerHTML = `
-    <div class="msg-icon">${icons[tipo] || '✉️'}</div>
-    <div class="msg-body">
-      <div class="msg-nome">${nome}</div>
-      <div class="msg-tipo">${labels[tipo] || tipo}${data ? ' · ' + data : ''}</div>
-    </div>
-    <div class="msg-time">${new Date().toLocaleTimeString('pt-BR')}</div>
-  `;
+
+  const icon     = document.createElement('div');
+  icon.className = 'msg-icon';
+  icon.textContent = icons[tipo] || '✉️';
+
+  const body     = document.createElement('div');
+  body.className = 'msg-body';
+
+  const nomeEl   = document.createElement('div');
+  nomeEl.className   = 'msg-nome';
+  nomeEl.textContent = nome; // seguro: textContent
+
+  const tipoEl   = document.createElement('div');
+  tipoEl.className   = 'msg-tipo';
+  tipoEl.textContent = `${labels[tipo] || tipo}${data ? ' · ' + data : ''}`;
+
+  body.append(nomeEl, tipoEl);
+
+  const timeEl   = document.createElement('div');
+  timeEl.className   = 'msg-time';
+  timeEl.textContent = new Date().toLocaleTimeString('pt-BR');
+
+  card.append(icon, body, timeEl);
   list.insertBefore(card, list.firstChild);
   while (list.children.length > 100) list.removeChild(list.lastChild);
 });
 
+// ─── Ultima verificacao (MELHORIA-7) ─────────────────────────────────────────
+window.api.onLastCheck(({ time, tab }) => {
+  $('last-check').textContent = time;
+});
+
 // ─── Auto-update ─────────────────────────────────────────────────────────────
-window.api.onUpdateStatus(({ type, version, percent }) => {
+window.api.onUpdateStatus(({ type, version, percent, bytesPerSecond, message }) => {
   const banner = $('update-banner');
   const msg    = $('update-msg');
+
   const msgs = {
-    checking:    '🔍 Verificando atualizações...',
-    available:   `⬇️ Baixando v${version}...`,
-    downloading: `⬇️ Baixando... ${percent}%`,
-    downloaded:  `✅ v${version} baixada — reiniciando em 5s...`,
+    checking:         'Verificando atualizações...',
+    available:        `Nova versão v${version} encontrada. Baixando...`,
+    downloading:      `Baixando atualização... ${percent}%${bytesPerSecond ? ' · ' + bytesPerSecond + ' KB/s' : ''}`,
+    downloaded:       `v${version} pronta — reiniciando em 3s...`,
+    'up-to-date':     null,
+    'download-timeout': 'Timeout no download — será tentado novamente em 4h.',
+    error:            `Erro na atualização: ${message || 'verifique os logs.'}`,
   };
-  if (msgs[type]) { banner.style.display = 'flex'; msg.textContent = msgs[type]; }
-  else              banner.style.display = 'none';
+
+  if (msgs[type] !== undefined && msgs[type] !== null) {
+    banner.style.display    = 'flex';
+    banner.style.background = (type === 'error' || type === 'download-timeout')
+      ? 'var(--red)' : 'var(--blue)';
+    msg.textContent = msgs[type];
+
+    // Esconde o banner de erro após 10s
+    if (type === 'error' || type === 'download-timeout' || type === 'up-to-date') {
+      setTimeout(() => banner.style.display = 'none', 10_000);
+    }
+  } else {
+    banner.style.display = 'none';
+  }
 });
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 (async () => {
   addLog('info', 'Aplicacao iniciada.');
-
-  // Verifica se já está configurado
   const cfg = await window.api.getConfig();
   if (!cfg.googleSheetId || !cfg.credentialsPath) {
     addLog('warn', 'Configure a planilha na aba Configuracoes antes de conectar.');
-    // Abre direto na aba de config
     document.querySelector('[data-tab="config"]').click();
   } else {
     addLog('info', `Planilha: ${cfg.googleSheetId.slice(0, 20)}...`);

@@ -4,12 +4,23 @@ const cron = require('node-cron');
 const { runHourBeforeReminders, runSiteConfirmations, runBirthdayMessages } = require('./reminder');
 const { emitLog } = require('./whatsapp');
 
-let jobs      = [];
-let isRunning = false;
-
-// Guarda para evitar execucoes sobrepostas do mesmo job
+let jobs          = [];
+let isRunning     = false;
 let runningManual = false;
 let runningSite   = false;
+
+// BUG-D CORRIGIDO: valida e normaliza o horario antes de construir a expressao cron
+function buildBirthdayCron(birthdayTime) {
+  const str = String(birthdayTime || '09:00');
+  const match = str.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) {
+    emitLog('warn', `Horario de aniversario invalido "${str}" — usando padrao 09:00.`);
+    return '0 9 * * *';
+  }
+  const h = Math.min(23, Math.max(0, parseInt(match[1], 10)));
+  const m = Math.min(59, Math.max(0, parseInt(match[2], 10)));
+  return `${m} ${h} * * *`;
+}
 
 function startScheduler() {
   if (isRunning) {
@@ -19,16 +30,13 @@ function startScheduler() {
 
   const { loadConfig } = require('./config');
   const cfg       = loadConfig();
-  const timezone  = cfg.timezone             || 'America/Fortaleza';
-  const tabManual = cfg.appointmentsTab      || 'Agendamentos_Manual';
-  const tabSite   = cfg.siteAppointmentsTab  || 'Agendamentos_Site';
+  const timezone  = cfg.timezone            || 'America/Fortaleza';
+  const tabManual = cfg.appointmentsTab     || 'Agendamentos_Manual';
+  const tabSite   = cfg.siteAppointmentsTab || 'Agendamentos_Site';
 
-  const [bHour, bMin] = (cfg.birthdayTime || '09:00').split(':').map(Number);
-  const birthdayCron  = `${bMin} ${bHour} * * *`; // cron: minuto hora * * *
+  // BUG-D CORRIGIDO: usa funcao segura para construir o cron
+  const birthdayCron = buildBirthdayCron(cfg.birthdayTime);
 
-  // Jobs 1 e 2 rodam a cada minuto com guards de sobreposição —
-  // os guards já garantem que uma execução não começa antes da anterior terminar,
-  // resolvendo o problema de concorrência sem precisar de cron diferente.
   const job1 = cron.schedule('* * * * *', async () => {
     if (runningManual) return;
     runningManual = true;
@@ -45,13 +53,11 @@ function startScheduler() {
     finally { runningSite = false; }
   }, { timezone });
 
-  // Job 3: a cada 5 min — confirmacoes de status do site
   const job3 = cron.schedule('*/5 * * * *', async () => {
     emitLog('info', `[${now()}] Verificando confirmacoes do site...`);
     await runSiteConfirmations();
   }, { timezone });
 
-  // Job 4: horario configurado — aniversarios
   const job4 = cron.schedule(birthdayCron, async () => {
     emitLog('info', `[${now()}] Verificando aniversariantes...`);
     await runBirthdayMessages();
@@ -60,11 +66,15 @@ function startScheduler() {
   jobs      = [job1, job2, job3, job4];
   isRunning = true;
 
+  const target = cfg.reminderMinutes       || 60;
+  const window = cfg.reminderWindowMinutes || 10;
+
   emitLog('info', 'Modo PRODUCAO ligado.');
-  emitLog('info', `  Agendamentos Manual : "${tabManual}" — verificacao a cada minuto`);
-  emitLog('info', `  Agendamentos Site   : "${tabSite}" — verificacao a cada minuto`);
-  emitLog('info', `  Confirmacoes Site   : a cada 5 minutos`);
-  emitLog('info', `  Aniversarios        : ${cfg.birthdayTime || '09:00'} | Fuso: ${timezone}`);
+  emitLog('info', `  Agendamentos Manual  : "${tabManual}" — a cada minuto`);
+  emitLog('info', `  Agendamentos Site    : "${tabSite}" — a cada minuto`);
+  emitLog('info', `  Lembrete             : ${target}min antes (±${window}min)`);
+  emitLog('info', `  Confirmacoes Site    : a cada 5 minutos`);
+  emitLog('info', `  Aniversarios         : ${cfg.birthdayTime || '09:00'} | Fuso: ${timezone}`);
 
   return true;
 }
@@ -75,31 +85,29 @@ function stopScheduler() {
     return false;
   }
   jobs.forEach(j => j.stop());
-  jobs      = [];
-  isRunning = false;
+  jobs          = [];
+  isRunning     = false;
+  runningManual = false;
+  runningSite   = false;
   emitLog('info', 'Modo PRODUCAO desligado.');
   return true;
 }
 
 function getIsRunning() { return isRunning; }
 
-// BUG 2 CORRIGIDO: runOnce agora executa AMBAS as abas (manual + site),
-// nao apenas a aba manual que era passada pelo botao.
 async function runOnce(tabName) {
   const { loadConfig } = require('./config');
-  const cfg      = loadConfig();
-  const testTab  = cfg.testTab || 'Teste';
-  const isTeste  = tabName === testTab;
+  const cfg     = loadConfig();
+  const testTab = cfg.testTab || 'Teste';
+  const isTeste = tabName === testTab;
 
   if (isTeste) {
     emitLog('info', `TESTE — lendo aba "${tabName}"...`);
     await runHourBeforeReminders(tabName);
   } else {
     emitLog('info', 'Executando agora — todas as abas...');
-    const tabManual = cfg.appointmentsTab     || 'Agendamentos_Manual';
-    const tabSite   = cfg.siteAppointmentsTab || 'Agendamentos_Site';
-    await runHourBeforeReminders(tabManual);
-    await runHourBeforeReminders(tabSite);
+    await runHourBeforeReminders(cfg.appointmentsTab     || 'Agendamentos_Manual');
+    await runHourBeforeReminders(cfg.siteAppointmentsTab || 'Agendamentos_Site');
     await runSiteConfirmations();
     await runBirthdayMessages();
   }

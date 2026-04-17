@@ -6,17 +6,10 @@
 <title>WhatsApp Lembrete</title>
 <style>
   :root {
-    --bg:       #0f172a;
-    --surface:  #1e293b;
-    --border:   #334155;
-    --text:     #f1f5f9;
-    --muted:    #94a3b8;
-    --green:    #22c55e;
-    --yellow:   #eab308;
-    --red:      #ef4444;
-    --blue:     #3b82f6;
-    --purple:   #a855f7;
-    --radius:   10px;
+    --bg:      #0f172a; --surface: #1e293b; --border: #334155;
+    --text:    #f1f5f9; --muted:   #94a3b8;
+    --green:   #22c55e; --yellow:  #eab308; --red:    #ef4444;
+    --blue:    #3b82f6; --purple:  #a855f7; --radius: 10px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -25,8 +18,6 @@
     height: 100vh; display: flex; flex-direction: column;
     overflow: hidden; font-size: 14px;
   }
-
-  /* Header */
   header {
     display: flex; align-items: center; justify-content: space-between;
     padding: 12px 20px; background: var(--surface);
@@ -34,7 +25,6 @@
   }
   .header-left { display: flex; align-items: center; gap: 10px; }
   .app-title   { font-size: 16px; font-weight: 700; }
-
   .status-badge {
     display: inline-flex; align-items: center; gap: 6px;
     padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;
@@ -46,17 +36,11 @@
   .status-badge.ready      .dot { background: var(--green); }
   .status-badge.error      .dot { background: var(--red); }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-
-  /* Layout */
-  main { display: grid; grid-template-columns: 260px 1fr; flex: 1; overflow: hidden; }
-
-  /* Aside */
+  main { display: grid; grid-template-columns: 268px 1fr; flex: 1; overflow: hidden; }
   aside {
     background: var(--surface); border-right: 1px solid var(--border);
-    display: flex; flex-direction: column; padding: 16px; gap: 14px; overflow-y: auto;
+    display: flex; flex-direction: column; padding: 16px; gap: 12px; overflow-y: auto;
   }
-
-  /* QR */
   .qr-section { display: flex; flex-direction: column; align-items: center; gap: 8px; }
   #qr-container {
     width: 210px; height: 210px; background: white; border-radius: var(--radius);
@@ -69,23 +53,19 @@
   }
   #qr-placeholder .icon { font-size: 36px; }
   .qr-hint { font-size: 11px; color: var(--muted); text-align: center; line-height: 1.5; }
-
-  /* Buttons */
   .btn {
     display: flex; align-items: center; justify-content: center; gap: 6px;
     padding: 9px 14px; border: none; border-radius: var(--radius);
     font-size: 13px; font-weight: 600; cursor: pointer;
     transition: opacity .2s, transform .1s; width: 100%;
   }
-  .btn:active  { transform: scale(.97); }
+  .btn:active   { transform: scale(.97); }
   .btn:disabled { opacity: .4; cursor: not-allowed; }
   .btn-green  { background: var(--green);  color: #000; }
   .btn-blue   { background: var(--blue);   color: #fff; }
   .btn-yellow { background: var(--yellow); color: #000; }
   .btn-red    { background: var(--red);    color: #fff; }
   .btn-ghost  { background: var(--border); color: var(--text); }
-
-  /* Stats */
   .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .stat-card {
     background: var(--bg); border: 1px solid var(--border);
@@ -93,13 +73,18 @@
   }
   .stat-card .stat-value { font-size: 22px; font-weight: 700; }
   .stat-card .stat-label { font-size: 10px; color: var(--muted); margin-top: 2px; }
-
   .section-title {
-    font-size: 11px; font-weight: 700; color: var(--muted);
+    font-size: 10px; font-weight: 700; color: var(--muted);
     text-transform: uppercase; letter-spacing: .06em;
   }
-
-  /* Right panel */
+  /* MELHORIA-7: ultima verificacao */
+  .last-check-row {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 10px; font-size: 11px;
+  }
+  .last-check-label { color: var(--muted); }
+  #last-check { color: var(--green); font-weight: 600; font-variant-numeric: tabular-nums; }
   section { display: flex; flex-direction: column; overflow: hidden; }
   .tabs {
     display: flex; border-bottom: 1px solid var(--border);
@@ -111,23 +96,18 @@
   }
   .tab:hover { color: var(--text); }
   .tab.active { color: var(--green); border-bottom-color: var(--green); }
-
   .tab-content { display: none; flex: 1; overflow: hidden; flex-direction: column; }
   .tab-content.active { display: flex; }
-
-  /* Log */
   #log-output {
     flex: 1; overflow-y: auto; padding: 12px 16px;
     font-family: 'Consolas', 'Courier New', monospace; font-size: 12px; line-height: 1.6;
   }
-  .log-line   { display: flex; gap: 10px; align-items: baseline; }
-  .log-time   { color: var(--muted); flex-shrink: 0; font-size: 11px; }
-  .log-msg    { word-break: break-word; }
-  .log-info    .log-msg { color: var(--text); }
-  .log-warn    .log-msg { color: var(--yellow); }
-  .log-error   .log-msg { color: var(--red); }
-
-  /* Msgs */
+  .log-line  { display: flex; gap: 10px; align-items: baseline; }
+  .log-time  { color: var(--muted); flex-shrink: 0; font-size: 11px; }
+  .log-msg   { word-break: break-word; }
+  .log-info  .log-msg { color: var(--text); }
+  .log-warn  .log-msg { color: var(--yellow); }
+  .log-error .log-msg { color: var(--red); }
   #msgs-list {
     flex: 1; overflow-y: auto; padding: 12px 16px;
     display: flex; flex-direction: column; gap: 8px;
@@ -142,92 +122,72 @@
   .msg-nome { font-weight: 600; }
   .msg-tipo { font-size: 11px; color: var(--muted); }
   .msg-time { font-size: 11px; color: var(--muted); flex-shrink: 0; }
-
-  /* ── Configurações ── */
-  #tab-config {
-    overflow-y: auto;
-    padding: 24px 28px;
-    gap: 0;
-  }
+  /* Configuracoes */
+  #tab-config { overflow-y: auto; padding: 20px 24px; gap: 0; }
   .config-section {
     background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
+    border-radius: var(--radius); padding: 18px; margin-bottom: 14px;
   }
   .config-section h3 {
-    font-size: 13px; font-weight: 700; margin-bottom: 16px;
-    color: var(--text); display: flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: 700; margin-bottom: 14px; color: var(--text);
   }
-  .config-row { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+  .config-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
   .config-row:last-child { margin-bottom: 0; }
-  .config-row label { font-size: 12px; color: var(--muted); font-weight: 600; }
+  .config-row label { font-size: 11px; color: var(--muted); font-weight: 600; }
   .config-row input {
     background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
-    color: var(--text); padding: 8px 10px; font-size: 13px; width: 100%;
+    color: var(--text); padding: 7px 10px; font-size: 13px; width: 100%;
     outline: none; transition: border-color .2s;
   }
   .config-row input:focus { border-color: var(--blue); }
   .config-row input::placeholder { color: var(--muted); }
-
+  .config-row input[type="number"] { width: 120px; }
+  .config-inline { display: flex; gap: 16px; align-items: flex-end; }
+  .config-inline .config-row { flex: 0 0 auto; margin-bottom: 0; }
   .file-row { display: flex; gap: 8px; align-items: center; }
   .file-row input { flex: 1; }
   .btn-pick {
     background: var(--border); color: var(--text); border: none;
-    border-radius: 6px; padding: 8px 12px; font-size: 12px; font-weight: 600;
+    border-radius: 6px; padding: 7px 12px; font-size: 12px; font-weight: 600;
     cursor: pointer; white-space: nowrap; flex-shrink: 0;
   }
   .btn-pick:hover { background: #475569; }
-
-  .config-hint { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
-
+  .config-hint { font-size: 11px; color: var(--muted); margin-top: 3px; line-height: 1.5; }
   .config-status {
-    display: none; align-items: center; gap: 8px;
-    padding: 10px 14px; border-radius: 8px; font-size: 13px; font-weight: 600;
-    margin-bottom: 16px;
+    display: none; padding: 10px 14px; border-radius: 8px;
+    font-size: 13px; font-weight: 600; margin-bottom: 14px;
   }
-  .config-status.ok    { display: flex; background: #14532d; color: #86efac; }
-  .config-status.error { display: flex; background: #450a0a; color: #fca5a5; }
-
+  .config-status.ok    { display: block; background: #14532d; color: #86efac; }
+  .config-status.error { display: block; background: #450a0a; color: #fca5a5; }
   .btn-save-config {
     background: var(--blue); color: white; border: none; border-radius: var(--radius);
     padding: 10px 24px; font-size: 14px; font-weight: 700; cursor: pointer;
     transition: opacity .2s;
   }
-  .btn-save-config:hover   { opacity: .85; }
+  .btn-save-config:hover    { opacity: .85; }
   .btn-save-config:disabled { opacity: .4; cursor: not-allowed; }
-
-  /* Update banner */
   #update-banner {
     display: none; align-items: center; justify-content: space-between;
     padding: 8px 16px; background: var(--blue); font-size: 12px; font-weight: 600; flex-shrink: 0;
   }
-
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 </style>
 </head>
 <body>
-
 <header>
   <div class="header-left">
     <span style="font-size:22px">💬</span>
-    <div>
-      <div class="app-title">WhatsApp Lembrete</div>
-    </div>
+    <div><div class="app-title">WhatsApp Lembrete</div></div>
   </div>
   <div id="wa-badge" class="status-badge">
     <div class="dot"></div>
     <span id="wa-status-text">Desconectado</span>
   </div>
 </header>
-
-<div id="update-banner">
-  <span id="update-msg">🔄 Verificando atualização...</span>
-</div>
-
+<div id="update-banner"><span id="update-msg"></span></div>
 <main>
-
-  <!-- Aside -->
   <aside>
     <div class="qr-section">
       <div id="qr-container">
@@ -239,24 +199,23 @@
       <p class="qr-hint" id="qr-hint">Configure e conecte para começar</p>
     </div>
 
-    <button class="btn btn-green" id="btn-connect">
-      📱 Conectar WhatsApp
-    </button>
+    <button class="btn btn-green" id="btn-connect">📱 Conectar WhatsApp</button>
 
     <div class="section-title">Modo de Produção</div>
+    <button class="btn btn-green" id="btn-toggle-prod" disabled>🟢 Ligar Produção</button>
 
-    <button class="btn btn-green" id="btn-toggle-prod" disabled>
-      🟢 Ligar Produção
-    </button>
+    <!-- MELHORIA-7: ultima verificacao -->
+    <div class="last-check-row">
+      <span class="last-check-label">Última verificação</span>
+      <span id="last-check">—</span>
+    </div>
 
     <div class="section-title">Execução Manual</div>
-
     <button class="btn btn-blue"   id="btn-run-now"  disabled>▶️ Executar agora</button>
     <button class="btn btn-yellow" id="btn-run-test" disabled>🧪 Modo Teste</button>
     <button class="btn btn-ghost"  id="btn-logs">📂 Abrir logs</button>
 
     <div class="section-title">Estatísticas de hoje</div>
-
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-value" id="stat-sent">0</div>
@@ -277,7 +236,6 @@
     </div>
   </aside>
 
-  <!-- Right panel -->
   <section>
     <div class="tabs">
       <div class="tab active" data-tab="logs">📋 Log</div>
@@ -285,12 +243,10 @@
       <div class="tab" data-tab="config">⚙️ Configurações</div>
     </div>
 
-    <!-- Log -->
     <div class="tab-content active" id="tab-logs">
       <div id="log-output"></div>
     </div>
 
-    <!-- Msgs -->
     <div class="tab-content" id="tab-msgs">
       <div id="msgs-list">
         <p style="color:var(--muted);text-align:center;padding:40px;font-size:13px">
@@ -299,91 +255,90 @@
       </div>
     </div>
 
-    <!-- Config -->
     <div class="tab-content" id="tab-config">
-
       <div id="config-status" class="config-status"></div>
 
-      <!-- Google Sheets -->
       <div class="config-section">
         <h3>📊 Google Sheets</h3>
-
         <div class="config-row">
           <label>ID da Planilha</label>
-          <input id="cfg-sheet-id" type="text"
-            placeholder="Ex: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms">
-          <div class="config-hint">
-            Encontre na URL da planilha:<br>
-            docs.google.com/spreadsheets/d/<strong>[ID AQUI]</strong>/edit
-          </div>
+          <input id="cfg-sheet-id" type="text" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74...">
+          <div class="config-hint">Encontre na URL: docs.google.com/spreadsheets/d/<strong>[ID]</strong>/edit</div>
         </div>
-
         <div class="config-row">
           <label>Arquivo de Credenciais (credentials.json)</label>
           <div class="file-row">
             <input id="cfg-creds-path" type="text" placeholder="Clique em Selecionar →" readonly>
             <button class="btn-pick" id="btn-pick-creds">📂 Selecionar</button>
           </div>
-          <div class="config-hint">
-            Arquivo JSON da Service Account do Google Cloud.<br>
-            Compartilhe a planilha com o e-mail da service account.
-          </div>
+          <div class="config-hint">Arquivo JSON da Service Account. Compartilhe a planilha com o e-mail da service account.</div>
         </div>
       </div>
 
-      <!-- Abas -->
       <div class="config-section">
         <h3>📑 Nome das Abas</h3>
-
         <div class="config-row">
-          <label>Aba de Agendamentos Manuais</label>
+          <label>Agendamentos Manuais</label>
           <input id="cfg-tab-appt" type="text" placeholder="Agendamentos_Manual">
         </div>
         <div class="config-row">
-          <label>Aba de Agendamentos do Site</label>
+          <label>Agendamentos do Site</label>
           <input id="cfg-tab-site" type="text" placeholder="Agendamentos_Site">
         </div>
         <div class="config-row">
-          <label>Aba de Aniversários</label>
+          <label>Aniversários</label>
           <input id="cfg-tab-bday" type="text" placeholder="Aniversário">
         </div>
         <div class="config-row">
-          <label>Aba de Testes</label>
+          <label>Testes</label>
           <input id="cfg-tab-test" type="text" placeholder="Teste">
         </div>
         <div class="config-row">
-          <label>Aba de Remarcação</label>
+          <label>Remarcação</label>
           <input id="cfg-tab-reschedule" type="text" placeholder="Remarcar">
-          <div class="config-hint">Clientes que responderem NÃO serão adicionados aqui automaticamente.</div>
+          <div class="config-hint">Clientes que responderem NÃO são adicionados aqui automaticamente.</div>
         </div>
       </div>
 
-      <!-- Outros -->
+      <div class="config-section">
+        <h3>⏰ Lembrete antes da consulta</h3>
+        <!-- MELHORIA-1: campos configuráveis -->
+        <div class="config-inline">
+          <div class="config-row">
+            <label>Enviar quantos minutos antes?</label>
+            <input id="cfg-reminder-min" type="number" min="5" max="480" value="60">
+          </div>
+          <div class="config-row">
+            <label>Margem de tolerância (±min)</label>
+            <input id="cfg-reminder-window" type="number" min="1" max="60" value="10">
+          </div>
+        </div>
+        <div class="config-hint">
+          Exemplo: 60 min antes com margem ±10 → enviará entre 50 e 70 minutos antes da consulta.
+        </div>
+      </div>
+
       <div class="config-section">
         <h3>⚙️ Outros</h3>
-
         <div class="config-row">
           <label>Status de confirmação do site (coluna J)</label>
           <input id="cfg-site-status" type="text" placeholder="confirmado">
-          <div class="config-hint">Valor exato da coluna Status quando pagamento é confirmado.</div>
+          <div class="config-hint">Valor exato da coluna Status quando o pagamento é confirmado.</div>
         </div>
         <div class="config-row">
           <label>Horário de envio dos parabéns (HH:MM)</label>
           <input id="cfg-bday-time" type="text" placeholder="09:00">
         </div>
         <div class="config-row">
-          <label>Contato para remarcação (exibido quando cliente diz NÃO)</label>
+          <label>Contato para remarcação (quando cliente diz NÃO)</label>
           <input id="cfg-contact" type="text" placeholder="Ex: (89) 99999-9999 ou link do site">
         </div>
       </div>
 
       <button class="btn-save-config" id="btn-save-config">💾 Salvar Configurações</button>
-
-    </div><!-- /tab-config -->
-
+    </div>
   </section>
 </main>
-
 <script src="renderer.js"></script>
 </body>
 </html>

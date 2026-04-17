@@ -1,5 +1,5 @@
 // src/sheets.js
-// Lê/escreve nas planilhas do cliente via Google Sheets API
+// Le/escreve nas planilhas do cliente via Google Sheets API
 
 const { google } = require('googleapis');
 const fs         = require('fs');
@@ -12,7 +12,7 @@ function getAuth() {
   const cfg = loadConfig();
   if (!cfg.credentialsPath || !fs.existsSync(cfg.credentialsPath)) {
     throw new Error(
-      'Arquivo de credenciais não encontrado. ' +
+      'Arquivo de credenciais nao encontrado. ' +
       'Va em Configuracoes e selecione o credentials.json.'
     );
   }
@@ -46,8 +46,22 @@ async function readTab(tabName) {
   return rows.length > 1 ? rows.slice(1) : [];
 }
 
-// ─── Aniversário ──────────────────────────────────────────────────────────────
-// Colunas: A=NOME, B=PRONTUÁRIO, C=NASCIMENTO, ..., J=TELEFONE
+// BUG-G CORRIGIDO: helper de retry com backoff exponencial
+async function withRetry(fn, label, maxAttempts = 3) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt === maxAttempts) throw err;
+      const waitMs = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s
+      emitLog('warn', `${label} — tentativa ${attempt} falhou. Tentando novamente em ${waitMs / 1000}s...`);
+      await new Promise(r => setTimeout(r, waitMs));
+    }
+  }
+}
+
+// ─── Aniversario ──────────────────────────────────────────────────────────────
+// Colunas: A=NOME, B=PRONTUARIO, C=NASCIMENTO, ..., J=TELEFONE
 
 async function getBirthdayClients() {
   const cfg     = loadConfig();
@@ -71,7 +85,7 @@ async function getBirthdayClients() {
 }
 
 // ─── Agendamentos Manual ──────────────────────────────────────────────────────
-// Colunas: A=NOME, B=DATA SESSÃO, C=HORARIO (18:00-19:00), D=TELEFONE
+// Colunas: A=NOME, B=DATA SESSAO, C=HORARIO (18:00-19:00), D=TELEFONE
 
 async function getAppointments(tabName) {
   const cfg = loadConfig();
@@ -99,8 +113,7 @@ async function getAppointments(tabName) {
 
 // ─── Agendamentos Site ────────────────────────────────────────────────────────
 // Colunas: B=data/hora cadastro, C=Nome, E=Telefone, F=Data Consulta,
-//          G=Horário Consulta, J=Status
-// Retorna: { rowIndex, nome, telefone, data, horaCompleta, horaInicio, status }
+//          G=Horario Consulta, J=Status
 
 async function getSiteAppointments() {
   const cfg     = loadConfig();
@@ -109,15 +122,15 @@ async function getSiteAppointments() {
     emitLog('info', `Lendo aba "${tabName}"...`);
     const rows = await readTab(tabName);
     const appointments = rows
-      .filter(row => row[4] && row[5]) // E=telefone, F=data
+      .filter(row => row[4] && row[5])
       .map((row, i) => ({
         rowIndex:     i + 2,
-        nome:         (row[2]  || 'Cliente').trim(), // C
-        telefone:     (row[4]  || '').trim(),        // E
-        data:         (row[5]  || '').trim(),        // F
-        horaCompleta: (row[6]  || '').trim(),        // G
-        horaInicio:   extractStartTime(row[6]),      // G início
-        status:       (row[9]  || '').trim(),        // J
+        nome:         (row[2]  || 'Cliente').trim(),
+        telefone:     (row[4]  || '').trim(),
+        data:         (row[5]  || '').trim(),
+        horaCompleta: (row[6]  || '').trim(),
+        horaInicio:   extractStartTime(row[6]),
+        status:       (row[9]  || '').trim(),
       }));
     emitLog('info', `${appointments.length} agendamentos na aba "${tabName}".`);
     return appointments;
@@ -128,13 +141,14 @@ async function getSiteAppointments() {
 }
 
 // ─── Remarcar ─────────────────────────────────────────────────────────────────
-// Adiciona linha: NOME | TELEFONE | DATA | HORARIO | PEDIDO EM
 
 async function appendToReschedule({ nome, telefone, data, horaCompleta }) {
   const cfg     = loadConfig();
   const tabName = cfg.rescheduleTab || 'Remarcar';
-  try {
-    const api  = await sheetsClient();
+
+  // BUG-G CORRIGIDO: 3 tentativas com backoff exponencial
+  return withRetry(async () => {
+    const api   = await sheetsClient();
     const agora = new Date().toLocaleString('pt-BR', {
       day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
@@ -148,10 +162,10 @@ async function appendToReschedule({ nome, telefone, data, horaCompleta }) {
     });
     emitLog('info', `${nome} adicionado a aba "${tabName}".`);
     return true;
-  } catch (err) {
-    emitLog('error', `Erro ao escrever na aba Remarcar: ${err.message}`);
+  }, `appendToReschedule(${nome})`).catch(err => {
+    emitLog('error', `Falha ao registrar remarcacao de ${nome} apos 3 tentativas: ${err.message}`);
     return false;
-  }
+  });
 }
 
 module.exports = {

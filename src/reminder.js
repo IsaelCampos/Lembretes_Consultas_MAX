@@ -13,17 +13,13 @@ const {
   wasSiteConfirmationSent, markSiteConfirmationSent,
 } = require('./state');
 
-// loadConfig no topo do arquivo — sem hoisting trick
 const loadConfig = () => require('./config').loadConfig();
 
 // ─── Utilitarios de data ──────────────────────────────────────────────────────
 
 function parseDate(str) {
   if (!str) return null;
-  const s = String(str).trim();
-  // BUG 5 CORRIGIDO: ordem unica e consistente — dd/MM primeiro para dados
-  // brasileiros. Para datas no formato americano (planilha de aniversario),
-  // usamos funcao separada isBirthdayToday com ordem correta.
+  const s    = String(str).trim();
   const fmts = [
     'dd/MM/yy', 'dd/MM/yyyy', 'yyyy-MM-dd',
     'MM/dd/yyyy', 'dd-MM-yyyy',
@@ -48,19 +44,16 @@ function buildDateTime(dataStr, horaStr) {
   if (!base) return null;
   if (!horaStr || !horaStr.includes(':')) return base;
   const [h, m] = horaStr.trim().split(':').map(Number);
-  const dt = new Date(base);
+  const dt     = new Date(base);
   dt.setHours(h || 0, m || 0, 0, 0);
   return dt;
 }
 
-// BUG 5 CORRIGIDO: isBirthdayToday usa MM/dd/yyyy PRIMEIRO porque a aba
-// Aniversario exporta no formato americano (ex: "11/14/2006").
-// Separado de parseDate() que lida com datas de agendamentos (formato BR).
+// isBirthdayToday: MM/dd/yyyy primeiro porque aba Aniversario exporta formato americano
 function isBirthdayToday(dateStr) {
   if (!dateStr) return false;
   const s   = String(dateStr).trim();
   const now = new Date();
-  // Formato americano primeiro (exportacao do Google Sheets)
   const fmts = ['MM/dd/yyyy', 'MM/dd/yy', 'dd/MM/yyyy', 'dd/MM/yy', 'MM/dd', 'dd/MM'];
   for (const fmt of fmts) {
     const d = parse(s, fmt, new Date());
@@ -78,19 +71,25 @@ function fmtData(dataStr) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// ─── 1. Lembrete 1h antes ────────────────────────────────────────────────────
+// ─── 1. Lembrete antes da consulta ───────────────────────────────────────────
 
 async function runHourBeforeReminders(tabName) {
   if (!getIsReady()) {
-    emitLog('warn', 'WhatsApp nao esta pronto — pulando verificacao de 1h antes.');
+    emitLog('warn', 'WhatsApp nao esta pronto — pulando verificacao de lembretes.');
     return;
   }
 
-  const cfg       = loadConfig();
+  // BUG-E + MELHORIA-1 CORRIGIDO: janela calculada a partir da config
+  const cfg    = loadConfig();
+  const target = Number(cfg.reminderMinutes)       || 60; // minutos antes
+  const window = Number(cfg.reminderWindowMinutes) || 10; // margem ±
+  const minDiff = target - window;
+  const maxDiff = target + window;
+
   const siteTab   = cfg.siteAppointmentsTab || 'Agendamentos_Site';
   const isSiteTab = tabName === siteTab;
 
-  emitLog('info', `Verificando consultas em ~1h na aba "${tabName}"...`);
+  emitLog('info', `Verificando lembretes (${target}min antes ±${window}min) na aba "${tabName}"...`);
 
   let appointments;
   try {
@@ -107,18 +106,18 @@ async function runHourBeforeReminders(tabName) {
     const dt = buildDateTime(a.data, a.horaInicio);
     if (!dt || !isToday(dt)) return false;
     const diff = differenceInMinutes(dt, now);
-    return diff >= 55 && diff <= 75;
+    return diff >= minDiff && diff <= maxDiff;
   });
 
-  emitLog('info', `Consultas em ~1h: ${proximas.length}`);
+  emitLog('info', `Consultas na janela de envio: ${proximas.length}`);
 
   for (const a of proximas) {
     if (wasHourBeforeSent(a.rowIndex, a.data)) {
-      emitLog('info', `IGNORADO — lembrete 1h ja enviado para ${a.nome} (${a.data}).`);
+      emitLog('info', `IGNORADO — lembrete ja enviado para ${a.nome} (${a.data}).`);
       continue;
     }
 
-    emitLog('info', `Enviando lembrete 1h para ${a.nome} | ${a.telefone} | ${a.horaCompleta}`);
+    emitLog('info', `Enviando lembrete para ${a.nome} | ${a.telefone} | ${a.horaCompleta}`);
 
     const exists = await checkNumberExists(a.telefone);
     if (!exists) {
@@ -137,18 +136,23 @@ async function runHourBeforeReminders(tabName) {
     const waId = await sendMessage(a.telefone, msg);
 
     if (waId) {
-      markHourBeforeSent(a.rowIndex, a.data, a.nome);
+      await markHourBeforeSent(a.rowIndex, a.data, a.nome);
       registerPendingConfirmation(waId, {
         nome: a.nome, telefone: a.telefone,
         data: a.data, horaCompleta: a.horaCompleta,
       });
       global.sendToRenderer?.('msg-sent', {
-        nome: a.nome, tipo: '1h_antes', hora: a.horaInicio, data: a.data,
+        nome: a.nome, tipo: 'lembrete', hora: a.horaInicio, data: a.data,
       });
+      // MELHORIA-7: atualiza timestamp de ultima execucao
+      global.sendToRenderer?.('last-check', { time: new Date().toLocaleTimeString('pt-BR'), tab: tabName });
     }
 
     await sleep(1500);
   }
+
+  // Atualiza mesmo que nao tenha enviado nada
+  global.sendToRenderer?.('last-check', { time: new Date().toLocaleTimeString('pt-BR'), tab: tabName });
 }
 
 // ─── 2. Confirmacao de agendamento do site ────────────────────────────────────
@@ -161,8 +165,9 @@ async function runSiteConfirmations() {
 
   const cfg            = loadConfig();
   const statusEsperado = (cfg.siteConfirmedStatus || 'confirmado').toLowerCase().trim();
+  const tabName        = cfg.siteAppointmentsTab || 'Agendamentos_Site';
 
-  emitLog('info', `Verificando confirmacoes na aba "${cfg.siteAppointmentsTab || 'Agendamentos_Site'}"...`);
+  emitLog('info', `Verificando confirmacoes na aba "${tabName}"...`);
 
   let appointments;
   try {
@@ -179,7 +184,6 @@ async function runSiteConfirmations() {
   emitLog('info', `Agendamentos com status "${statusEsperado}": ${confirmados.length}`);
 
   for (const a of confirmados) {
-    // BUG 4 CORRIGIDO: passa telefone como segundo argumento para chave composta
     if (wasSiteConfirmationSent(a.rowIndex, a.telefone)) {
       emitLog('info', `IGNORADO — confirmacao ja enviada para ${a.nome} (linha ${a.rowIndex}).`);
       continue;
@@ -195,25 +199,18 @@ async function runSiteConfirmations() {
 
     const msg =
       `Prezado(a) ${a.nome},\n\n` +
-      `Está quase na hora da sua consulta! Vamos garantir que tudo esteja pronto.\n` +
+      `Sua consulta esta confirmada e agendada.\n` +
       `Aqui estão os detalhes:\n\n` +
       `Consulta com: Maxwell Soares\n` +
       `📅 Data:  ${fmtData(a.data)}\n` +
       `⏰ Horário: ${a.horaInicio}\n\n` +
-      `Aqui estão algumas dicas para uma experiência incrível:\n\n` +
-      `- Encontre um cantinho tranquilo e com boa iluminação.\n` +
-      `- Teste sua conexão de internet, câmera e microfone antes da consulta.\n` +
-      `- Use fones de ouvido para maior privacidade e melhor qualidade de áudio.\n` +
-      `- E o mais importante: relaxe! Estamos aqui para cuidar de você.\n\n` +
-      `Caso tenha alguma duvida ou necessite de informacoes adicionais, nao hesite em nos contatar.\n\n` +
       `Atenciosamente,\n` +
       `Equipe de Atendimento`;
 
     const waId = await sendMessage(a.telefone, msg);
 
     if (waId) {
-      // BUG 4 CORRIGIDO: passa telefone para chave composta
-      markSiteConfirmationSent(a.rowIndex, a.telefone, a.nome);
+      await markSiteConfirmationSent(a.rowIndex, a.telefone, a.nome);
       global.sendToRenderer?.('msg-sent', { nome: a.nome, tipo: 'confirmacao_site', data: a.data });
     }
 
@@ -264,7 +261,7 @@ async function runBirthdayMessages() {
     const waId = await sendMessage(c.telefone, msg);
 
     if (waId) {
-      markBirthdaySent(c.telefone, c.nome);
+      await markBirthdaySent(c.telefone, c.nome);
       global.sendToRenderer?.('msg-sent', { nome: c.nome, tipo: 'aniversario' });
     }
 

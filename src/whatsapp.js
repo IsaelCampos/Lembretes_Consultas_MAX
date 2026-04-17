@@ -1,5 +1,5 @@
 // src/whatsapp.js
-// Gerencia a conexao WhatsApp e o fluxo de resposta SIM/NAO
+// Gerencia conexao WhatsApp e fluxo de resposta SIM/NAO
 
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
@@ -36,8 +36,31 @@ function toBrazilianNumber(phone) {
   return '55' + digits;
 }
 
-// BUG 3 e 8 CORRIGIDOS: substituimos once() por on() com guard interno,
-// e resetamos o client corretamente para permitir reconexao limpa.
+// BUG-A CORRIGIDO: wrapper de timeout para operacoes que podem travar
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Timeout (${ms}ms): ${label}`)), ms)
+    ),
+  ]);
+}
+
+// BUG-I CORRIGIDO: limpeza periodica de pendings expirados (a cada 30 min)
+function startPendingCleanup() {
+  setInterval(() => {
+    const now    = Date.now();
+    let removed  = 0;
+    for (const [waId, pending] of pendingConfirmations) {
+      if (now > pending.expiresAt) {
+        pendingConfirmations.delete(waId);
+        removed++;
+      }
+    }
+    if (removed > 0) emitLog('info', `Limpeza: ${removed} pending(s) expirado(s) removido(s).`);
+  }, 30 * 60 * 1000);
+}
+
 function attachClientEvents() {
   client.on('qr', async (qr) => {
     emitLog('info', 'QR Code gerado — aguardando leitura...');
@@ -50,7 +73,6 @@ function attachClientEvents() {
     }
   });
 
-  // Usa on() em vez de once() para suportar reconexoes sem recriar o client
   client.on('authenticated', () => {
     emitLog('info', 'WhatsApp autenticado.');
     emit('wa-status', { status: 'authenticated' });
@@ -74,9 +96,6 @@ function attachClientEvents() {
     isReady = false;
     emitLog('warn', 'WhatsApp desconectado: ' + reason);
     emit('wa-status', { status: 'disconnected', reason });
-    // Nao zeramos client aqui — deixamos o objeto existir para que o
-    // whatsapp-web.js possa tentar reconectar automaticamente via LocalAuth.
-    // O guard 'if (client)' em initWhatsApp evita duplicacao.
   });
 
   client.on('message', async (msg) => {
@@ -109,20 +128,38 @@ function attachClientEvents() {
     try {
       if (confirmou) {
         pendingConfirmations.delete(waId);
-        const texto = `Ótimo, ${snapshot.nome}! Sua presença está confirmada. Te esperamos daqui a pouco!`;
+        const texto = `Ótimo, ${snapshot.nome}! Sua presença está confirmada. Te esperamos daqui a pouco!\n\n` +
+        `Está quase na hora da sua consulta! Vamos garantir que tudo esteja pronto.\n` +
+        `Aqui estão os detalhes:\n\n` +
+        `Consulta com: Maxwell Soares\n` +
+        `📅 Data:  ${fmtData(a.data)}\n` +
+        `⏰ Horário: ${a.horaInicio}\n\n` +
+        `Aqui estão algumas dicas para uma experiência incrível:\n\n` +
+        `- Encontre um cantinho tranquilo e com boa iluminação.\n` +
+        `- Teste sua conexão de internet, câmera e microfone antes da consulta.\n` +
+        `- Use fones de ouvido para maior privacidade e melhor qualidade de áudio.\n` +
+        `- E o mais importante: relaxe! Estamos aqui para cuidar de você.\n\n` +
+        `Caso tenha alguma duvida ou necessite de informacoes adicionais, nao hesite em nos contatar.\n\n` +
+        `Atenciosamente,\n` +
+        `Equipe de Atendimento`;
+        
         await client.sendMessage(waId, texto);
         emitLog('info', `OK — ${snapshot.nome} confirmou presenca.`);
         emit('msg-sent', { nome: snapshot.nome, tipo: 'confirmacao_sim', waId });
 
       } else if (negou) {
         pendingConfirmations.delete(waId);
-        const { loadConfig }       = require('./config');
+        const { loadConfig }         = require('./config');
         const { appendToReschedule } = require('./sheets');
-        const contato = loadConfig().contactInfo || 'Aguardamos seu retorno.';
-        const texto = `Entendemos, ${snapshot.nome}. Por favor, entre em contato para remarcar sua consulta.\n\n${contato}\n\nQualquer duvida, estamos a disposicao!`;
+        const contato = loadConfig().contactInfo || 'aguardamos seu contato';
+        const texto =
+          `Entendemos, ${snapshot.nome}. ` +
+          `Por favor, entre em contato para remarcar sua consulta.\n\n${contato}\n\n` +
+          `Qualquer duvida, estamos a disposicao!`;
         await client.sendMessage(waId, texto);
         emitLog('info', `REMARCAR — ${snapshot.nome} pediu para remarcar.`);
         emit('msg-sent', { nome: snapshot.nome, tipo: 'confirmacao_nao', waId });
+        // BUG-G: retry tratado dentro do appendToReschedule
         await appendToReschedule({
           nome:         snapshot.nome,
           telefone:     snapshot.telefone     || '',
@@ -143,7 +180,6 @@ function attachClientEvents() {
 }
 
 async function initWhatsApp() {
-  // Guard: se client ja existe (inclusive apos desconexao), nao recria
   if (client) {
     emitLog('info', 'Cliente WhatsApp ja instanciado.');
     return;
@@ -161,9 +197,11 @@ async function initWhatsApp() {
   });
 
   attachClientEvents();
+  startPendingCleanup();
   client.initialize();
 }
 
+// BUG-A CORRIGIDO: sendMessage com timeout de 15s por operacao
 async function sendMessage(phone, message) {
   if (!isReady || !client) {
     emitLog('error', 'WhatsApp nao esta pronto.');
@@ -173,12 +211,23 @@ async function sendMessage(phone, message) {
   const intl = toBrazilianNumber(phone);
 
   try {
-    const numberId = await client.getNumberId(intl);
+    const numberId = await withTimeout(
+      client.getNumberId(intl),
+      15_000,
+      `getNumberId(${intl})`
+    );
+
     if (!numberId) {
       emitLog('warn', `Numero ${intl} nao encontrado no WhatsApp.`);
       return false;
     }
-    await client.sendMessage(numberId._serialized, message);
+
+    await withTimeout(
+      client.sendMessage(numberId._serialized, message),
+      15_000,
+      `sendMessage(${intl})`
+    );
+
     emitLog('info', `Enviado para ${numberId._serialized}`);
     return numberId._serialized;
   } catch (err) {
@@ -187,11 +236,16 @@ async function sendMessage(phone, message) {
   }
 }
 
+// BUG-A CORRIGIDO: checkNumberExists com timeout de 10s
 async function checkNumberExists(phone) {
   if (!isReady || !client) return false;
   const intl = toBrazilianNumber(phone);
   try {
-    return await client.isRegisteredUser(`${intl}@c.us`);
+    return await withTimeout(
+      client.isRegisteredUser(`${intl}@c.us`),
+      10_000,
+      `isRegisteredUser(${intl})`
+    );
   } catch {
     return false;
   }

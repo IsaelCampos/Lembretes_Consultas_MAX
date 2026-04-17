@@ -1,6 +1,6 @@
 {
   "name": "whatsapp-lembrete",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Lembretes automáticos de consultas via WhatsApp",
   "main": "src/main.js",
   "scripts": {
@@ -51,13 +51,15 @@
     "publish": {
       "provider": "github",
       "owner": "IsaelCampos",
-      "repo": "Lembretes_Consultas_MAX"
+      "repo": "Lembretes_Consultas_MAX",
+      "private": false
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
+      "perMachine": false,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false
     }
   },
   "engines": {
