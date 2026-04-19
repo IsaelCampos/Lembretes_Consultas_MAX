@@ -3,15 +3,16 @@
 
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
-const log    = require('electron-log');
+const log = require('electron-log');
 const { app } = require('electron');
-const path   = require('path');
+const path = require('path');
 
-let client   = null;
-let isReady  = false;
+let client = null;
+let isReady = false;
+let cleanupTimer = null;
 
 const pendingConfirmations = new Map();
-const processingLock       = new Set();
+const processingLock = new Set();
 
 function sessionPath() {
   return path.join(app.getPath('userData'), 'wa-session');
@@ -36,7 +37,7 @@ function toBrazilianNumber(phone) {
   return '55' + digits;
 }
 
-// BUG-A CORRIGIDO: wrapper de timeout para operacoes que podem travar
+// Wrapper de timeout para operacoes que podem travar.
 function withTimeout(promise, ms, label) {
   return Promise.race([
     promise,
@@ -46,24 +47,25 @@ function withTimeout(promise, ms, label) {
   ]);
 }
 
-// BUG-I CORRIGIDO: limpeza periodica de pendings expirados (a cada 30 min)
 function startPendingCleanup() {
-  setInterval(() => {
-    const now    = Date.now();
-    let removed  = 0;
+  cleanupTimer = setInterval(() => {
+    const now = Date.now();
+    let removed = 0;
+
     for (const [waId, pending] of pendingConfirmations) {
       if (now > pending.expiresAt) {
         pendingConfirmations.delete(waId);
         removed++;
       }
     }
+
     if (removed > 0) emitLog('info', `Limpeza: ${removed} pending(s) expirado(s) removido(s).`);
   }, 30 * 60 * 1000);
 }
 
 function attachClientEvents() {
   client.on('qr', async (qr) => {
-    emitLog('info', 'QR Code gerado — aguardando leitura...');
+    emitLog('info', 'QR Code gerado - aguardando leitura...');
     try {
       const dataUrl = await qrcode.toDataURL(qr, { width: 280, margin: 2 });
       emit('qr-code', { dataUrl });
@@ -101,7 +103,7 @@ function attachClientEvents() {
   client.on('message', async (msg) => {
     if (msg.fromMe || msg.isGroupMsg) return;
 
-    const waId       = msg.from;
+    const waId = msg.from;
     const hasPending = pendingConfirmations.has(waId);
 
     emitLog('info', `Mensagem recebida de ${waId}: "${msg.body}" | pending: ${hasPending}`);
@@ -123,50 +125,53 @@ function attachClientEvents() {
       .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
     const confirmou = /^(sim|s|yes|1|confirmo|confirmado)$/.test(resposta) || msg.body.trim() === '✅';
-    const negou     = /^(nao|no|2|cancelar|remarcar)$/.test(resposta)      || msg.body.trim() === '❌';
+    const negou = /^(nao|no|2|cancelar|remarcar)$/.test(resposta) || msg.body.trim() === '❌';
 
     try {
       if (confirmou) {
         pendingConfirmations.delete(waId);
-        const texto = `Ótimo, ${snapshot.nome}! Sua presença está confirmada. Te esperamos daqui a pouco!\n\n` +
-        `Está quase na hora da sua consulta! Vamos garantir que tudo esteja pronto.\n` +
-        `Aqui estão os detalhes:\n\n` +
-        `Consulta com: Maxwell Soares\n` +
-        `📅 Data:  ${fmtData(a.data)}\n` +
-        `⏰ Horário: ${a.horaInicio}\n\n` +
-        `Aqui estão algumas dicas para uma experiência incrível:\n\n` +
-        `- Encontre um cantinho tranquilo e com boa iluminação.\n` +
-        `- Teste sua conexão de internet, câmera e microfone antes da consulta.\n` +
-        `- Use fones de ouvido para maior privacidade e melhor qualidade de áudio.\n` +
-        `- E o mais importante: relaxe! Estamos aqui para cuidar de você.\n\n` +
-        `Caso tenha alguma duvida ou necessite de informacoes adicionais, nao hesite em nos contatar.\n\n` +
-        `Atenciosamente,\n` +
-        `Equipe de Atendimento`;
-        
-        await client.sendMessage(waId, texto);
-        emitLog('info', `OK — ${snapshot.nome} confirmou presenca.`);
-        emit('msg-sent', { nome: snapshot.nome, tipo: 'confirmacao_sim', waId });
 
+        const dataConsulta = snapshot.data || 'data nao informada';
+        const horarioConsulta = snapshot.horaCompleta || 'horario nao informado';
+        const texto =
+          `Otimo, ${snapshot.nome}! Sua presenca esta confirmada. Te esperamos daqui a pouco!\n\n` +
+          `Esta quase na hora da sua consulta! Vamos garantir que tudo esteja pronto.\n` +
+          `Aqui estao os detalhes:\n\n` +
+          `Consulta com: Maxwell Soares\n` +
+          `Data: ${dataConsulta}\n` +
+          `Horario: ${horarioConsulta}\n\n` +
+          `Aqui estao algumas dicas para uma experiencia incrivel:\n\n` +
+          `- Encontre um cantinho tranquilo e com boa iluminacao.\n` +
+          `- Teste sua conexao de internet, camera e microfone antes da consulta.\n` +
+          `- Use fones de ouvido para maior privacidade e melhor qualidade de audio.\n` +
+          `- E o mais importante: relaxe! Estamos aqui para cuidar de voce.\n\n` +
+          `Caso tenha alguma duvida ou necessite de informacoes adicionais, nao hesite em nos contatar.\n\n` +
+          `Atenciosamente,\n` +
+          `Equipe de Atendimento`;
+
+        await client.sendMessage(waId, texto);
+        emitLog('info', `OK - ${snapshot.nome} confirmou presenca.`);
+        emit('msg-sent', { nome: snapshot.nome, tipo: 'confirmacao_sim', waId });
       } else if (negou) {
         pendingConfirmations.delete(waId);
-        const { loadConfig }         = require('./config');
+        const { loadConfig } = require('./config');
         const { appendToReschedule } = require('./sheets');
         const contato = loadConfig().contactInfo || 'aguardamos seu contato';
         const texto =
           `Entendemos, ${snapshot.nome}. ` +
           `Por favor, entre em contato para remarcar sua consulta.\n\n${contato}\n\n` +
           `Qualquer duvida, estamos a disposicao!`;
+
         await client.sendMessage(waId, texto);
-        emitLog('info', `REMARCAR — ${snapshot.nome} pediu para remarcar.`);
+        emitLog('info', `REMARCAR - ${snapshot.nome} pediu para remarcar.`);
         emit('msg-sent', { nome: snapshot.nome, tipo: 'confirmacao_nao', waId });
-        // BUG-G: retry tratado dentro do appendToReschedule
+
         await appendToReschedule({
-          nome:         snapshot.nome,
-          telefone:     snapshot.telefone     || '',
-          data:         snapshot.data         || '',
+          nome: snapshot.nome,
+          telefone: snapshot.telefone || '',
+          data: snapshot.data || '',
           horaCompleta: snapshot.horaCompleta || '',
         });
-
       } else {
         await client.sendMessage(waId, 'Por favor, responda apenas *SIM* ou *NAO*.');
         emitLog('info', `Resposta nao reconhecida de ${snapshot.nome}: "${msg.body}"`);
@@ -201,7 +206,26 @@ async function initWhatsApp() {
   client.initialize();
 }
 
-// BUG-A CORRIGIDO: sendMessage com timeout de 15s por operacao
+async function shutdownWhatsApp() {
+  if (!client) return;
+
+  const currentClient = client;
+  client = null;
+  isReady = false;
+
+  if (cleanupTimer) {
+    clearInterval(cleanupTimer);
+    cleanupTimer = null;
+  }
+
+  try {
+    await withTimeout(currentClient.destroy(), 15_000, 'client.destroy()');
+    emitLog('info', 'Cliente WhatsApp finalizado com sucesso.');
+  } catch (err) {
+    emitLog('warn', `Falha ao finalizar cliente WhatsApp: ${err.message}`);
+  }
+}
+
 async function sendMessage(phone, message) {
   if (!isReady || !client) {
     emitLog('error', 'WhatsApp nao esta pronto.');
@@ -236,10 +260,10 @@ async function sendMessage(phone, message) {
   }
 }
 
-// BUG-A CORRIGIDO: checkNumberExists com timeout de 10s
 async function checkNumberExists(phone) {
   if (!isReady || !client) return false;
   const intl = toBrazilianNumber(phone);
+
   try {
     return await withTimeout(
       client.isRegisteredUser(`${intl}@c.us`),
@@ -259,10 +283,13 @@ function registerPendingConfirmation(waId, data) {
   emitLog('info', `Pending registrado para ${waId} (${data.nome})`);
 }
 
-function getIsReady() { return isReady; }
+function getIsReady() {
+  return isReady;
+}
 
 module.exports = {
   initWhatsApp,
+  shutdownWhatsApp,
   sendMessage,
   checkNumberExists,
   registerPendingConfirmation,

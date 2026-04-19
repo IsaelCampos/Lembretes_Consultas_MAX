@@ -8,6 +8,8 @@ let jobs          = [];
 let isRunning     = false;
 let runningManual = false;
 let runningSite   = false;
+let runningConfirmations = false;
+let runningBirthdays     = false;
 
 // BUG-D CORRIGIDO: valida e normaliza o horario antes de construir a expressao cron
 function buildBirthdayCron(birthdayTime) {
@@ -54,13 +56,19 @@ function startScheduler() {
   }, { timezone });
 
   const job3 = cron.schedule('*/5 * * * *', async () => {
+    if (runningConfirmations) return;
+    runningConfirmations = true;
     emitLog('info', `[${now()}] Verificando confirmacoes do site...`);
-    await runSiteConfirmations();
+    try { await runSiteConfirmations(); }
+    finally { runningConfirmations = false; }
   }, { timezone });
 
   const job4 = cron.schedule(birthdayCron, async () => {
+    if (runningBirthdays) return;
+    runningBirthdays = true;
     emitLog('info', `[${now()}] Verificando aniversariantes...`);
-    await runBirthdayMessages();
+    try { await runBirthdayMessages(); }
+    finally { runningBirthdays = false; }
   }, { timezone });
 
   jobs      = [job1, job2, job3, job4];
@@ -89,6 +97,8 @@ function stopScheduler() {
   isRunning     = false;
   runningManual = false;
   runningSite   = false;
+  runningConfirmations = false;
+  runningBirthdays     = false;
   emitLog('info', 'Modo PRODUCAO desligado.');
   return true;
 }

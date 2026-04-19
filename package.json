@@ -38,7 +38,8 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "assets/icon.ico"
+      "icon": "assets/icon.ico",
+      "artifactName": "WhatsApp-Lembrete-Setup-${version}.exe"
     },
     "mac": {
       "target": "dmg",
